@@ -109,41 +109,53 @@ def team_player_stats(team_name, match_link, cur):
     players_stats = []
 
     # --- Получаем hltv_id команды ---
-    cur.execute("SELECT hltv_id FROM teams WHERE name=%s", (team_name,))
+    cur.execute("SELECT hltv_id, last_update FROM teams WHERE name=%s", (team_name,))
     res = cur.fetchone()
     if not res:
         print(f"[ERROR] Team {team_name} not found in DB")
         return []
-    team_id = res[0]
+    team_id, last_update = res
 
-    # --- Пытаемся получить страницу матча ---
+    # --- Проверяем дату обновления ---
+    use_db_only = False
+    if last_update:
+        if last_update.tzinfo:
+            last_update = last_update.replace(tzinfo=None)
+        delta = (datetime.now() - last_update).total_seconds()
+        if delta < 86400:  # <24 часа
+            use_db_only = True
+
+    if use_db_only:
+        # --- Берём всех игроков с team_id = hltv_id ---
+        cur.execute("""
+            SELECT nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr
+            FROM players_stats
+            WHERE team_id=%s
+        """, (team_id,))
+        for row in cur.fetchall():
+            players_stats.append({
+                "nickname": row[0],
+                "rating": float(row[1]) if row[1] is not None else 0.0,
+                "round_swing": float(row[2]) if row[2] is not None else 0.0,
+                "dpr": float(row[3]) if row[3] is not None else 0.0,
+                "kast": float(row[4]) if row[4] is not None else 0.0,
+                "multi_kill": float(row[5]) if row[5] is not None else 0.0,
+                "adr": float(row[6]) if row[6] is not None else 0.0,
+                "kpr": float(row[7]) if row[7] is not None else 0.0,
+            })
+        return players_stats
+
+    # --- Парсинг состава (если данные старые или нет кэша) ---
     try:
         html = scraper.get(match_link, timeout=20).text
         soup = BeautifulSoup(html, "html.parser")
         lineup_divs = soup.select(".lineup")
     except Exception as e:
         print(f"[WARN] Failed to retrieve match page {match_link}: {e}")
-        # --- fallback: берем всех игроков с team_id ---
-        cur.execute("""
-            SELECT nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr
-            FROM players_stats WHERE team_id=%s
-        """, (team_id,))
-        for row in cur.fetchall():
-            players_stats.append({
-                "nickname": row[0],
-                "rating": float(row[1]),
-                "round_swing": float(row[2]),
-                "dpr": float(row[3]),
-                "kast": float(row[4]),
-                "multi_kill": float(row[5]),
-                "adr": float(row[6]),
-                "kpr": float(row[7]),
-            })
-        return players_stats
+        return []
 
     current_player_ids = []
 
-    # --- Скрейпинг состава ---
     for team_div in lineup_divs:
         team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
         if not team_name_el:
@@ -278,6 +290,7 @@ def team_player_stats(team_name, match_link, cur):
 
     cur.connection.commit()
     return players_stats
+
 
 
 def team_match_stats(team_name, match_link, cur):

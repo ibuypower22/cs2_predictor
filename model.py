@@ -104,13 +104,12 @@ def clean_text(text: str) -> str:
     return text
 
 
-def team_player_stats(team_name, match_link, cur, force_scrape=False):
+def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
 
     print(f"[INFO] Fetching stats for team: {team_name}")
 
-    # Получаем страницу матча
     try:
         html = scraper.get(match_link, timeout=20).text
     except Exception as e:
@@ -148,16 +147,14 @@ def team_player_stats(team_name, match_link, cur, force_scrape=False):
                 "FROM players_stats WHERE hltv_id=%s", (player_id,)
             )
             row = cur.fetchone()
-            use_cache = False
 
+            use_cache = False
             if row and row[7]:
                 last_update = row[7]
                 if last_update.tzinfo:
                     last_update = last_update.replace(tzinfo=None)
-                # Кэш используем если запись <24 часов и данные непустые
-                if (datetime.now() - last_update).total_seconds() < 86400 \
-                        and all(row[i] is not None and row[i] != 0.0 for i in range(7)) \
-                        and not force_scrape:
+                # используем кэш, если <24ч и значения заполнены
+                if (datetime.now() - last_update).total_seconds() < 86400 and all(row[i] is not None for i in range(7)):
                     use_cache = True
 
             if use_cache:
@@ -175,8 +172,8 @@ def team_player_stats(team_name, match_link, cur, force_scrape=False):
                 })
                 continue
 
-            # --- Скрейпинг (только если force_scrape=True или данные старые/неполные) ---
             print(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
+
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
@@ -187,7 +184,7 @@ def team_player_stats(team_name, match_link, cur, force_scrape=False):
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
                 print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
-                # Не затираем старые данные, используем кэш если есть
+                # --- используем кэш, если есть, иначе пропускаем
                 if row:
                     print(f"[WARN] Keeping existing DB stats for {nickname_clean} ({player_id}) due to scrape failure")
                     players_stats.append({
@@ -243,19 +240,20 @@ def team_player_stats(team_name, match_link, cur, force_scrape=False):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            # --- Сохраняем в БД только если есть данные (не None) ---
-            db_values = tuple(stats_dict.get(k, None) if stats_dict.get(k, None) is not None else 0.0
-                              for k in ["hltv_id","nickname","rating","round_swing","dpr","kast","multi_kill","adr","kpr"])
-            cur.execute("""
-                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                ON CONFLICT (hltv_id) DO UPDATE
-                SET nickname=EXCLUDED.nickname,
-                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
-                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
-                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
-                    last_update=NOW()
-            """, db_values)
+            # --- Сохраняем в БД только если есть хоть одна валидная метрика ---
+            if any(stats_dict[k] is not None for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]):
+                cur.execute("""
+                    INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                    ON CONFLICT (hltv_id) DO UPDATE
+                    SET nickname=EXCLUDED.nickname,
+                        rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
+                        kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
+                        adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
+                        last_update=NOW()
+                """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
+                      stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
+                      stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
 
             players_stats.append(stats_dict)
 

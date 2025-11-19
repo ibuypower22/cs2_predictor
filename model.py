@@ -104,38 +104,20 @@ def clean_text(text: str) -> str:
     return text
 
 
-def team_player_stats(team_name, match_link, cur, ui_log=False):
-    """
-    Возвращает (players_stats, logs).
-    players_stats - список словарей с метриками (как раньше).
-    logs - список строк с диагностикой (можно вывести в UI).
-    """
-    logs = []
+def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
-
-    def _log(msg):
-        logs.append(msg)
-        if ui_log:
-            try:
-                import streamlit as _st
-                _st.text(msg)
-            except Exception:
-                pass  # если streamlit недоступен — молчим
-
-    _log(f"[INFO {datetime.utcnow().isoformat()}] Fetching stats for team: {team_name} (match {match_link})")
 
     # --- Получаем страницу матча ---
     try:
         html = scraper.get(match_link, timeout=20).text
     except Exception as e:
-        _log(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
-        return [], logs
+        print(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
+        return []
 
     soup = BeautifulSoup(html, "html.parser")
     lineup_divs = soup.select(".lineup")
-    if not lineup_divs:
-        _log("[WARN] No lineup blocks found on match page")
+
     for team_div in lineup_divs:
         team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
         if not team_name_el:
@@ -147,227 +129,131 @@ def team_player_stats(team_name, match_link, cur, ui_log=False):
         for player_div in team_div.select(".player-compare")[:5]:
             player_id = player_div.get("data-player-id")
             if not player_id:
-                _log("[WARN] player_div without data-player-id, skipping")
                 continue
 
-            # --- Никнейм ---
+            # --- Получаем никнейм ---
             img = player_div.select_one("img.player-photo")
             if img and img.has_attr("alt"):
                 alt_text = img["alt"]
-                # пробуем взять оригинальный ник как в alt (не чистим для URL)
-                # alt может быть вида "Player 'nickname' ..." — попробуем парсить аккуратно
-                if "'" in alt_text:
-                    try:
-                        nickname = alt_text.split("'")[1].strip()
-                    except:
-                        nickname = alt_text.strip()
-                else:
-                    # fallback: берем первую часть
-                    nickname = alt_text.strip().split()[0]
+                nickname = alt_text.split("'")[1].strip() if "'" in alt_text else alt_text.strip()
             else:
                 nickname = f"Player_{player_id}"
 
-            nickname_clean = clean_text(nickname) if 'clean_text' in globals() else nickname
+            # --- Чистим ник перед записью в БД ---  ← CLEAN
+            nickname_clean = clean_text(nickname)
 
-            # --- Проверка кэша (ищем по строковому hltv_id) ---
-            try:
-                cur.execute(
-                    "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
-                    "FROM players_stats WHERE hltv_id=%s", (str(player_id),)
-                )
-                row = cur.fetchone()
-            except Exception as e:
-                _log(f"[ERROR] DB select failed for {player_id}: {e}")
-                row = None
-
-            if row:
-                # Если в БД есть хоть одна заполненная метрика - используем кэш
-                try:
-                    values_present = any(row[i] is not None and float(row[i]) != 0.0 for i in range(7))
-                except Exception:
-                    values_present = True  # на случай нестандартных типов — используем
-                if values_present:
-                    _log(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
-                    try:
-                        players_stats.append({
-                            "hltv_id": str(player_id),
-                            "nickname": nickname_clean,
-                            "rating": float(row[0]) if row[0] is not None else 0.0,
-                            "round_swing": float(row[1]) if row[1] is not None else 0.0,
-                            "dpr": float(row[2]) if row[2] is not None else 0.0,
-                            "kast": float(row[3]) if row[3] is not None else 0.0,
-                            "multi_kill": float(row[4]) if row[4] is not None else 0.0,
-                            "adr": float(row[5]) if row[5] is not None else 0.0,
-                            "kpr": float(row[6]) if row[6] is not None else 0.0
-                        })
-                    except Exception as e:
-                        _log(f"[ERROR] Bad DB row format for {player_id}: {e}")
-                        # fallback - продолжим и попробуем скрейпить
-                else:
-                    _log(f"[CACHE] DB row exists but no valid metrics for {nickname_clean} ({player_id}), will attempt scrape")
-            else:
-                _log(f"[CACHE] No DB row for {nickname_clean} ({player_id}), will attempt scrape")
-
-            # Если у нас уже есть запись, и она была добавлена - skip скрейп
-            if any(p.get("hltv_id") == str(player_id) for p in players_stats):
-                continue
-
-            # --- Скрейпинг ---
-            stats_dict = {"hltv_id": str(player_id), "nickname": nickname_clean}
-            # безопасный вариант URL: HLTV понимает /- как fallback для ника
-            stats_url = f"https://www.hltv.org/stats/players/{player_id}/-?startDate={(datetime.now()-timedelta(days=90)).strftime('%Y-%m-%d')}&endDate={datetime.now().strftime('%Y-%m-%d')}"
-            _log(f"[SCRAPE] Trying stats URL: {stats_url}")
-
-            try:
-                stats_html = scraper.get(stats_url, timeout=20)
-                stats_html.raise_for_status()
-                soup_stats = BeautifulSoup(stats_html.text, "html.parser")
-            except Exception as e:
-                _log(f"[ERROR] Unable to retrieve stats page for {nickname_clean} ({player_id}): {e}")
-                # Если есть row в БД — используем её (не затираем)
-                if row and any(row[i] is not None for i in range(7)):
-                    _log(f"[WARN] Using existing DB values for {nickname_clean} ({player_id}) due to scrape failure")
-                    try:
-                        players_stats.append({
-                            "hltv_id": str(player_id),
-                            "nickname": nickname_clean,
-                            "rating": float(row[0]) if row[0] is not None else 0.0,
-                            "round_swing": float(row[1]) if row[1] is not None else 0.0,
-                            "dpr": float(row[2]) if row[2] is not None else 0.0,
-                            "kast": float(row[3]) if row[3] is not None else 0.0,
-                            "multi_kill": float(row[4]) if row[4] is not None else 0.0,
-                            "adr": float(row[5]) if row[5] is not None else 0.0,
-                            "kpr": float(row[6]) if row[6] is not None else 0.0
-                        })
-                    except Exception:
-                        pass
-                else:
-                    _log(f"[WARN] No DB data available for {nickname_clean} ({player_id}) and scrape failed — skipping")
-                continue
-
-            # Парсим — аккуратно, допускаем None
-            try:
-                rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
-                stats_dict["rating"] = float(Decimal(rating_el.string.strip())) if rating_el and rating_el.string else None
-            except Exception:
-                stats_dict["rating"] = None
-
-            # round swing
-            stats_dict["round_swing"] = None
-            try:
-                for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
-                    label_el = box.select_one(".player-summary-stat-box-data-text")
-                    value_el = box.select_one(".player-summary-stat-box-data")
-                    if label_el and value_el and "round swing" in label_el.get_text(strip=True).lower():
-                        value_text = "".join(c for c in value_el.get_text(strip=True) if c in "0123456789.-")
-                        stats_dict["round_swing"] = float(Decimal(value_text))
-                        break
-            except Exception:
-                stats_dict["round_swing"] = None
-
-            # остальные метрики
-            for k in ["dpr", "kast", "multi_kill", "adr", "kpr"]:
-                stats_dict[k] = None
-
-            try:
-                for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
-                    parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
-                    if not parent_label:
-                        continue
-                    label = parent_label.get_text(strip=True).lower()
-                    value_text = "".join(c for c in metric_div.get_text(strip=True) if c in "0123456789.")
-                    if not value_text:
-                        continue
-                    value = float(value_text)
-                    if "dpr" in label:
-                        stats_dict["dpr"] = value
-                    elif "kast" in label:
-                        stats_dict["kast"] = value
-                    elif "multi-kill" in label:
-                        stats_dict["multi_kill"] = value
-                    elif "adr" in label:
-                        stats_dict["adr"] = value
-                    elif "kpr" in label:
-                        stats_dict["kpr"] = value
-            except Exception:
-                pass
-
-            # Записываем только если есть хотя бы одна валидная метрика (не None и != 0)
-            valid = any(
-                stats_dict.get(k) is not None and (not isinstance(stats_dict.get(k), float) or stats_dict.get(k) != 0.0)
-                for k in ["rating", "round_swing", "dpr", "kast", "multi_kill", "adr", "kpr"]
+            # --- Проверка кэша ---
+            cur.execute(
+                "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
+                "FROM players_stats WHERE hltv_id=%s", (player_id,)
             )
+            row = cur.fetchone()
 
-            if not valid:
-                _log(f"[WARN] Scrape returned no valid metrics for {nickname_clean} ({player_id}) — NOT updating DB")
-                # если DB есть — используем её; если нет — добавляем placeholder с нулями? пропустим
-                if row and any(row[i] is not None for i in range(7)):
+            if row and row[7]:
+                last_update = row[7]
+                if last_update.tzinfo:
+                    last_update = last_update.replace(tzinfo=None)
+                delta = (datetime.now() - last_update).total_seconds()
+
+                if delta < 86400 and all(row[i] is not None and row[i] != 0.0 for i in range(7)):
                     players_stats.append({
-                        "hltv_id": str(player_id),
-                        "nickname": nickname_clean,
-                        "rating": float(row[0]) if row[0] is not None else 0.0,
-                        "round_swing": float(row[1]) if row[1] is not None else 0.0,
-                        "dpr": float(row[2]) if row[2] is not None else 0.0,
-                        "kast": float(row[3]) if row[3] is not None else 0.0,
-                        "multi_kill": float(row[4]) if row[4] is not None else 0.0,
-                        "adr": float(row[5]) if row[5] is not None else 0.0,
-                        "kpr": float(row[6]) if row[6] is not None else 0.0
+                        "hltv_id": player_id,
+                        "nickname": nickname_clean,  # ← используем очищенный
+                        "rating": float(row[0]),
+                        "round_swing": float(row[1]),
+                        "dpr": float(row[2]),
+                        "kast": float(row[3]),
+                        "multi_kill": float(row[4]),
+                        "adr": float(row[5]),
+                        "kpr": float(row[6])
                     })
-                else:
-                    # добавляем пустышку, но не пишем в БД
-                    players_stats.append({
-                        "hltv_id": str(player_id),
-                        "nickname": nickname_clean,
-                        "rating": 0.0,
-                        "round_swing": 0.0,
-                        "dpr": 0.0,
-                        "kast": 0.0,
-                        "multi_kill": 0.0,
-                        "adr": 0.0,
-                        "kpr": 0.0
-                    })
+                    continue
+
+            # --- Скрейпим если нужно ---
+            stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
+
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+
+            # URL ДОЛЖЕН ИСПОЛЬЗОВАТЬ ОРИГИНАЛЬНЫЙ ник, НЕ ЧИСТЫЙ
+            stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
+
+            try:
+                stats_html = scraper.get(stats_url, timeout=20).text
+                soup_stats = BeautifulSoup(stats_html, "html.parser")
+            except Exception as e:
+                print(f"[ERROR] Unable to retrieve stats page for {nickname}: {e}")
+                stats_dict.update({
+                    "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
+                    "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0
+                })
+                players_stats.append(stats_dict)
                 continue
 
-            # Если валидно — вставляем/обновляем в БД
-            try:
-                cur.execute("""
-                    INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                    ON CONFLICT (hltv_id) DO UPDATE
-                    SET nickname=EXCLUDED.nickname,
-                        rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
-                        kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
-                        adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
-                        last_update=NOW()
-                """, (
-                    stats_dict["hltv_id"], stats_dict["nickname"],
-                    stats_dict.get("rating"), stats_dict.get("round_swing"),
-                    stats_dict.get("dpr"), stats_dict.get("kast"),
-                    stats_dict.get("multi_kill"), stats_dict.get("adr"),
-                    stats_dict.get("kpr")
-                ))
-                cur.connection.commit()
-                _log(f"[DB] Upserted stats for {nickname_clean} ({player_id}): { {k: stats_dict.get(k) for k in ['rating','round_swing','dpr','kast','multi_kill','adr','kpr']} }")
-            except Exception as e:
-                cur.connection.rollback()
-                _log(f"[ERROR] DB upsert failed for {nickname_clean} ({player_id}): {e}")
-                # но всё равно добавим parsed в return, т.к. у нас они есть
-            players_stats.append({
-                "hltv_id": str(player_id),
-                "nickname": nickname_clean,
-                "rating": float(stats_dict["rating"]) if stats_dict.get("rating") is not None else 0.0,
-                "round_swing": float(stats_dict["round_swing"]) if stats_dict.get("round_swing") is not None else 0.0,
-                "dpr": float(stats_dict["dpr"]) if stats_dict.get("dpr") is not None else 0.0,
-                "kast": float(stats_dict["kast"]) if stats_dict.get("kast") is not None else 0.0,
-                "multi_kill": float(stats_dict["multi_kill"]) if stats_dict.get("multi_kill") is not None else 0.0,
-                "adr": float(stats_dict["adr"]) if stats_dict.get("adr") is not None else 0.0,
-                "kpr": float(stats_dict["kpr"]) if stats_dict.get("kpr") is not None else 0.0
-            })
+            # --- rating ---
+            rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
+            if rating_el:
+                try:
+                    stats_dict["rating"] = float(Decimal(rating_el.string.strip()))
+                except:
+                    stats_dict["rating"] = 0.0
 
-        break  # мы обработали команду из lineup_divs
+            # --- round swing ---
+            for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
+                label_el = box.select_one(".player-summary-stat-box-data-text")
+                value_el = box.select_one(".player-summary-stat-box-data")
+                if label_el and value_el and "round swing" in label_el.get_text(strip=True).lower():
+                    value_text = "".join(c for c in value_el.get_text(strip=True) if c in "0123456789.-")
+                    try:
+                        stats_dict["round_swing"] = float(Decimal(value_text))
+                    except:
+                        stats_dict["round_swing"] = 0.0
+                    break
 
-    _log(f"[INFO] Finished fetching stats for team {team_name}: {players_stats}")
-    return players_stats, logs
+            # --- Остальные ---
+            stats_dict.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
+
+            for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
+                parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
+                if not parent_label:
+                    continue
+                label = parent_label.get_text(strip=True).lower()
+                value_text = "".join(c for c in metric_div.get_text(strip=True) if c in "0123456789.")
+                try:
+                    value = float(value_text)
+                except:
+                    continue
+                if "dpr" in label:
+                    stats_dict["dpr"] = value
+                elif "kast" in label:
+                    stats_dict["kast"] = value
+                elif "multi-kill" in label:
+                    stats_dict["multi_kill"] = value
+                elif "adr" in label:
+                    stats_dict["adr"] = value
+                elif "kpr" in label:
+                    stats_dict["kpr"] = value
+
+            # --- Сохраняем в БД ---
+            cur.execute("""
+                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                ON CONFLICT (hltv_id) DO UPDATE
+                SET nickname=EXCLUDED.nickname,
+                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
+                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
+                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
+                    last_update=NOW()
+            """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
+                  stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
+                  stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
+
+            players_stats.append(stats_dict)
+
+        break
+
+    cur.connection.commit()
+    return players_stats
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

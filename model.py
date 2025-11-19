@@ -141,23 +141,14 @@ def team_player_stats(team_name, match_link, cur):
 
             nickname_clean = clean_text(nickname)
 
-            # --- Проверка кэша ---
+            # --- Проверка кэша без учета времени ---
             cur.execute(
                 "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
                 "FROM players_stats WHERE hltv_id=%s", (player_id,)
             )
             row = cur.fetchone()
 
-            use_cache = False
-            if row and row[7]:
-                last_update = row[7]
-                if last_update.tzinfo:
-                    last_update = last_update.replace(tzinfo=None)
-                # используем кэш, если <24ч и значения заполнены
-                if (datetime.now() - last_update).total_seconds() < 86400 and all(row[i] is not None for i in range(7)):
-                    use_cache = True
-
-            if use_cache:
+            if row:  # просто используем кэш если есть
                 print(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
                 players_stats.append({
                     "hltv_id": player_id,
@@ -174,6 +165,7 @@ def team_player_stats(team_name, match_link, cur):
 
             print(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
 
+            # --- Остальной код скрейпинга как у тебя ---
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
@@ -184,23 +176,8 @@ def team_player_stats(team_name, match_link, cur):
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
                 print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
-                # --- используем кэш, если есть, иначе пропускаем
-                if row:
-                    print(f"[WARN] Keeping existing DB stats for {nickname_clean} ({player_id}) due to scrape failure")
-                    players_stats.append({
-                        "hltv_id": player_id,
-                        "nickname": nickname_clean,
-                        "rating": float(row[0]),
-                        "round_swing": float(row[1]),
-                        "dpr": float(row[2]),
-                        "kast": float(row[3]),
-                        "multi_kill": float(row[4]),
-                        "adr": float(row[5]),
-                        "kpr": float(row[6])
-                    })
                 continue
 
-            # --- Парсим статистику ---
             rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
             stats_dict["rating"] = float(Decimal(rating_el.string.strip())) if rating_el else None
 
@@ -240,7 +217,6 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            # --- Сохраняем в БД только если есть хоть одна валидная метрика ---
             if any(stats_dict[k] is not None for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]):
                 cur.execute("""
                     INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
@@ -262,6 +238,7 @@ def team_player_stats(team_name, match_link, cur):
     cur.connection.commit()
     print(f"[INFO] Finished fetching stats for team {team_name}: {players_stats}")
     return players_stats
+
 
 
 def team_match_stats(team_name, match_link, cur):

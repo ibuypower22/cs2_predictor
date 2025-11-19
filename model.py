@@ -108,6 +108,14 @@ def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
 
+    # --- Получаем hltv_id команды ---
+    cur.execute("SELECT hltv_id FROM teams WHERE name=%s", (team_name,))
+    res = cur.fetchone()
+    if not res:
+        print(f"[ERROR] Team {team_name} not found in DB")
+        return []
+    team_id = res[0]
+
     # --- Получаем страницу матча ---
     try:
         html = scraper.get(match_link, timeout=20).text
@@ -117,6 +125,7 @@ def team_player_stats(team_name, match_link, cur):
 
     soup = BeautifulSoup(html, "html.parser")
     lineup_divs = soup.select(".lineup")
+    current_player_ids = []
 
     for team_div in lineup_divs:
         team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
@@ -130,16 +139,15 @@ def team_player_stats(team_name, match_link, cur):
             player_id = player_div.get("data-player-id")
             if not player_id:
                 continue
+            current_player_ids.append(int(player_id))
 
-            # --- Получаем никнейм ---
+            # --- Никнейм ---
             img = player_div.select_one("img.player-photo")
             if img and img.has_attr("alt"):
                 alt_text = img["alt"]
                 nickname = alt_text.split("'")[1].strip() if "'" in alt_text else alt_text.strip()
             else:
                 nickname = f"Player_{player_id}"
-
-            # --- Чистим ник перед записью в БД ---  ← CLEAN
             nickname_clean = clean_text(nickname)
 
             # --- Проверка кэша ---
@@ -158,7 +166,7 @@ def team_player_stats(team_name, match_link, cur):
                 if delta < 86400 and all(row[i] is not None and row[i] != 0.0 for i in range(7)):
                     players_stats.append({
                         "hltv_id": player_id,
-                        "nickname": nickname_clean,  # ← используем очищенный
+                        "nickname": nickname_clean,
                         "rating": float(row[0]),
                         "round_swing": float(row[1]),
                         "dpr": float(row[2]),
@@ -167,6 +175,11 @@ def team_player_stats(team_name, match_link, cur):
                         "adr": float(row[5]),
                         "kpr": float(row[6])
                     })
+                    # --- Обновляем team_id ---
+                    cur.execute(
+                        "UPDATE players_stats SET team_id=%s WHERE hltv_id=%s",
+                        (team_id, player_id)
+                    )
                     continue
 
             # --- Скрейпим если нужно ---
@@ -235,22 +248,20 @@ def team_player_stats(team_name, match_link, cur):
                     stats_dict["kpr"] = value
 
             # --- Сохраняем в БД ---
-            cur.execute("""
-                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                ON CONFLICT (hltv_id) DO UPDATE
-                SET nickname=EXCLUDED.nickname,
-                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
-                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
-                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
-                    last_update=NOW()
-            """, (int(stats_dict["hltv_id"]), stats_dict["nickname"], stats_dict["rating"],
-                  stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
-                  stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
-
+            cur.execute(
+                "UPDATE players_stats SET team_id=%s WHERE hltv_id=%s",
+                (team_id, player_id)
+            )
             players_stats.append(stats_dict)
 
         break
+
+        # --- Обнуляем team_id у игроков, которых нет в текущем составе ---
+    if current_player_ids:
+        cur.execute(
+            "UPDATE players_stats SET team_id=NULL WHERE team_id=%s AND hltv_id NOT IN %s",
+            (team_id, tuple(current_player_ids))
+        )
 
     cur.connection.commit()
     return players_stats

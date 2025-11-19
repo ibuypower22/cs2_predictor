@@ -1,5 +1,61 @@
 [
   {
+    "tournament": "Galaxy Battle 2025 Phase 5",
+    "team1": "CYBERSHOKE",
+    "team2": "SPARTA",
+    "format": "Live",
+    "status": "live",
+    "match_link": "https://www.hltv.org/matches/2387462/cybershoke-vs-sparta-galaxy-battle-2025-phase-5",
+    "maps": [
+      {
+        "map": "Ancient",
+        "status": "upcoming"
+      },
+      {
+        "map": "Nuke",
+        "status": "upcoming"
+      },
+      {
+        "map": "Overpass",
+        "status": "upcoming"
+      }
+    ],
+    "upcoming_maps": [
+      "Ancient",
+      "Nuke",
+      "Overpass"
+    ],
+    "match_time": null
+  },
+  {
+    "tournament": "ESL Challenger League Season 50 Europe Finals",
+    "team1": "SINNERS",
+    "team2": "Friendly Campers",
+    "format": "Live",
+    "status": "live",
+    "match_link": "https://www.hltv.org/matches/2388218/sinners-vs-friendly-campers-esl-challenger-league-season-50-europe-finals",
+    "maps": [
+      {
+        "map": "Inferno",
+        "status": "upcoming"
+      },
+      {
+        "map": "Nuke",
+        "status": "upcoming"
+      },
+      {
+        "map": "Ancient",
+        "status": "upcoming"
+      }
+    ],
+    "upcoming_maps": [
+      "Inferno",
+      "Nuke",
+      "Ancient"
+    ],
+    "match_time": null
+  },
+  {
     "tournament": "CCT Season 3 Europe Series 11",
     "team1": "Partizan",
     "team2": "CPH Wolves",
@@ -13,40 +69,15 @@
       },
       {
         "map": "Nuke",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Mirage",
-        "status": "upcoming"
+        "status": "played"
       }
     ],
-    "upcoming_maps": [
-      "Nuke",
-      "Mirage"
-    ],
+    "upcoming_maps": [],
     "match_time": null
-  },
-  {
-    "tournament": "Galaxy Battle 2025 Phase 5",
-    "team1": "CYBERSHOKE",
-    "team2": "SPARTA",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2387462/cybershoke-vs-sparta-galaxy-battle-2025-phase-5",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 20:00"
-  },
-  {
-    "tournament": "ESL Challenger League Season 50 Europe Finals",
-    "team1": "SINNERS",
-    "team2": "Friendly Campers",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2388218/sinners-vs-friendly-campers-esl-challenger-league-season-50-europe-finals",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 20:00"
   },
   {
     "tournament": "CCT Season 3 Europe Series 11",
@@ -57,7 +88,7 @@
     "match_link": "https://www.hltv.org/matches/2387826/betera-vs-jijiehao-cct-season-3-europe-series-11",
     "maps": [],
     "upcoming_maps": [],
-    "match_time": "2025-11-19 20:00"
+    "match_time": "2025-11-19 20:15"
   },
   {
     "tournament": "ESL Challenger League Season 50 South America Finals",

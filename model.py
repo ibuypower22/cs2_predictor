@@ -165,7 +165,6 @@ def team_player_stats(team_name, match_link, cur):
                 nickname = img["alt"].split("'")[1].strip() if img and "'" in img["alt"] else img["alt"].strip() if img else f"Player_{player_id}"
                 nickname_clean = clean_text(nickname)
 
-                # --- Берём из кэша ---
                 cur.execute("""
                     SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr
                     FROM players_stats WHERE hltv_id=%s
@@ -183,6 +182,11 @@ def team_player_stats(team_name, match_link, cur):
                         "adr": float(row[5]) if row[5] is not None else 0.0,
                         "kpr": float(row[6]) if row[6] is not None else 0.0,
                     })
+                    # --- Обновляем team_id даже для существующих игроков ---
+                    cur.execute(
+                        "UPDATE players_stats SET team_id=%s WHERE hltv_id=%s",
+                        (team_id, player_id)
+                    )
             break
 
     return players_stats

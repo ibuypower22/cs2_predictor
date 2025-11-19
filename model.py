@@ -300,8 +300,6 @@ def team_player_stats(team_name, match_link, cur):
 
     return players_stats
 
-
-
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
 

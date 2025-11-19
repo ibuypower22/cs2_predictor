@@ -9,7 +9,7 @@
     "maps": [
       {
         "map": "Ancient",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Nuke",
@@ -21,7 +21,6 @@
       }
     ],
     "upcoming_maps": [
-      "Ancient",
       "Nuke",
       "Overpass"
     ],
@@ -37,7 +36,7 @@
     "maps": [
       {
         "map": "Inferno",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Nuke",
@@ -49,7 +48,6 @@
       }
     ],
     "upcoming_maps": [
-      "Inferno",
       "Nuke",
       "Ancient"
     ],
@@ -57,38 +55,30 @@
   },
   {
     "tournament": "CCT Season 3 Europe Series 11",
-    "team1": "Partizan",
-    "team2": "CPH Wolves",
-    "format": "Live",
-    "status": "live",
-    "match_link": "https://www.hltv.org/matches/2387825/partizan-vs-cph-wolves-cct-season-3-europe-series-11",
-    "maps": [
-      {
-        "map": "Inferno",
-        "status": "played"
-      },
-      {
-        "map": "Nuke",
-        "status": "played"
-      },
-      {
-        "map": "Mirage",
-        "status": "played"
-      }
-    ],
-    "upcoming_maps": [],
-    "match_time": null
-  },
-  {
-    "tournament": "CCT Season 3 Europe Series 11",
     "team1": "Betera",
     "team2": "JiJieHao",
-    "format": "Upcoming",
-    "status": "upcoming",
+    "format": "Live",
+    "status": "live",
     "match_link": "https://www.hltv.org/matches/2387826/betera-vs-jijiehao-cct-season-3-europe-series-11",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 20:15"
+    "maps": [
+      {
+        "map": "Dust2",
+        "status": "played"
+      },
+      {
+        "map": "Ancient",
+        "status": "upcoming"
+      },
+      {
+        "map": "Inferno",
+        "status": "upcoming"
+      }
+    ],
+    "upcoming_maps": [
+      "Ancient",
+      "Inferno"
+    ],
+    "match_time": null
   },
   {
     "tournament": "ESL Challenger League Season 50 South America Finals",
@@ -132,7 +122,7 @@
     "match_link": "https://www.hltv.org/matches/2388278/leo-vs-havu-european-pro-league-series-3-closed-qualifier",
     "maps": [],
     "upcoming_maps": [],
-    "match_time": "2025-11-20 15:30"
+    "match_time": "2025-11-20 16:30"
   },
   {
     "tournament": "NODWIN Clutch Series 3 Closed Qualifier",

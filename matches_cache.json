@@ -1,31 +1,5 @@
 [
   {
-    "tournament": "CCT Season 3 Europe Series 11",
-    "team1": "500",
-    "team2": "ECLOT",
-    "format": "Live",
-    "status": "live",
-    "match_link": "https://www.hltv.org/matches/2387824/500-vs-eclot-cct-season-3-europe-series-11",
-    "maps": [
-      {
-        "map": "Mirage",
-        "status": "played"
-      },
-      {
-        "map": "Nuke",
-        "status": "played"
-      },
-      {
-        "map": "Ancient",
-        "status": "upcoming"
-      }
-    ],
-    "upcoming_maps": [
-      "Ancient"
-    ],
-    "match_time": null
-  },
-  {
     "tournament": "ESL Challenger League Season 50 Asia-Pacific Finals",
     "team1": "Lynn Vision",
     "team2": "Chinggis Warriors",
@@ -35,7 +9,7 @@
     "maps": [
       {
         "map": "Inferno",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Dust2",
@@ -47,70 +21,10 @@
       }
     ],
     "upcoming_maps": [
-      "Inferno",
       "Dust2",
       "Nuke"
     ],
     "match_time": null
-  },
-  {
-    "tournament": "NODWIN Clutch Series 3 Closed Qualifier",
-    "team1": "MANA",
-    "team2": "Eternal Fire",
-    "format": "Live",
-    "status": "live",
-    "match_link": "https://www.hltv.org/matches/2388276/mana-vs-eternal-fire-nodwin-clutch-series-3-closed-qualifier",
-    "maps": [
-      {
-        "map": "Dust2",
-        "status": "played"
-      },
-      {
-        "map": "Overpass",
-        "status": "played"
-      },
-      {
-        "map": "Train",
-        "status": "upcoming"
-      }
-    ],
-    "upcoming_maps": [
-      "Train"
-    ],
-    "match_time": null
-  },
-  {
-    "tournament": "CCT Season 3 Europe Series 11",
-    "team1": "Partizan",
-    "team2": "CPH Wolves",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2387825/partizan-vs-cph-wolves-cct-season-3-europe-series-11",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 17:00"
-  },
-  {
-    "tournament": "CCT Season 3 Europe Series 11",
-    "team1": "Betera",
-    "team2": "JiJieHao",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2387826/betera-vs-jijiehao-cct-season-3-europe-series-11",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 20:00"
-  },
-  {
-    "tournament": "Galaxy Battle 2025 Phase 5",
-    "team1": "Oramond",
-    "team2": "NOVAQ",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2387461/oramond-vs-novaq-galaxy-battle-2025-phase-5",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 17:00"
   },
   {
     "tournament": "Galaxy Battle 2025 Phase 5",
@@ -119,6 +33,59 @@
     "format": "Upcoming",
     "status": "upcoming",
     "match_link": "https://www.hltv.org/matches/2387462/cybershoke-vs-sparta-galaxy-battle-2025-phase-5",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-19 20:00"
+  },
+  {
+    "tournament": "ESL Challenger League Season 50 Europe Finals",
+    "team1": "SINNERS",
+    "team2": "Friendly Campers",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388218/sinners-vs-friendly-campers-esl-challenger-league-season-50-europe-finals",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-19 20:00"
+  },
+  {
+    "tournament": "CCT Season 3 Europe Series 11",
+    "team1": "Partizan",
+    "team2": "CPH Wolves",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2387825/partizan-vs-cph-wolves-cct-season-3-europe-series-11",
+    "maps": [
+      {
+        "map": "Inferno",
+        "action": "picked",
+        "team": "3."
+      },
+      {
+        "map": "Nuke",
+        "action": "picked",
+        "team": "4."
+      },
+      {
+        "map": "Mirage",
+        "action": "left over",
+        "team": null
+      }
+    ],
+    "upcoming_maps": [
+      "Inferno",
+      "Nuke",
+      "Mirage"
+    ],
+    "match_time": "2025-11-19 17:05"
+  },
+  {
+    "tournament": "CCT Season 3 Europe Series 11",
+    "team1": "Betera",
+    "team2": "JiJieHao",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2387826/betera-vs-jijiehao-cct-season-3-europe-series-11",
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-19 20:00"
@@ -133,17 +100,6 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-20 00:00"
-  },
-  {
-    "tournament": "ESL Challenger League Season 50 Europe Finals",
-    "team1": "SINNERS",
-    "team2": "Friendly Campers",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2388218/sinners-vs-friendly-campers-esl-challenger-league-season-50-europe-finals",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 20:00"
   },
   {
     "tournament": "DraculaN Season 3Lan",
@@ -166,6 +122,17 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-20 12:30"
+  },
+  {
+    "tournament": "European Pro League Series 3 Closed Qualifier",
+    "team1": "Leo",
+    "team2": "HAVU",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388278/leo-vs-havu-european-pro-league-series-3-closed-qualifier",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-20 15:30"
   },
   {
     "tournament": "NODWIN Clutch Series 3 Closed Qualifier",
@@ -265,6 +232,39 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-20 12:30"
+  },
+  {
+    "tournament": "European Pro League Series 3 Closed Qualifier",
+    "team1": "CSDIILIT",
+    "team2": "QWENTRY",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388277/csdiilit-vs-qwentry-european-pro-league-series-3-closed-qualifier",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-20 13:30"
+  },
+  {
+    "tournament": "European Pro League Series 3 Closed Qualifier",
+    "team1": "ComeBack",
+    "team2": "MANA",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388279/comeback-vs-mana-european-pro-league-series-3-closed-qualifier",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-21 11:00"
+  },
+  {
+    "tournament": "European Pro League Series 3 Closed Qualifier",
+    "team1": "MOUZ NXT",
+    "team2": "HyperSpirit",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388280/mouz-nxt-vs-hyperspirit-european-pro-league-series-3-closed-qualifier",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-21 13:30"
   },
   {
     "tournament": "JB Pro League 2025",

@@ -145,7 +145,7 @@ def team_player_stats(team_name, match_link, cur):
             # --- Проверка кэша ---
             cur.execute(
                 "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
-                "FROM players_stats WHERE hltv_id=%s", (player_id,)
+                "FROM players_stats WHERE hltv_id=%s", (int(player_id),)
             )
             row = cur.fetchone()
 
@@ -244,7 +244,7 @@ def team_player_stats(team_name, match_link, cur):
                     kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
                     adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
                     last_update=NOW()
-            """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
+            """, (int(stats_dict["hltv_id"]), stats_dict["nickname"], stats_dict["rating"],
                   stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
                   stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
 

@@ -108,6 +108,8 @@ def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
 
+    print(f"[INFO] Fetching stats for team: {team_name}")
+
     # --- Получаем страницу матча ---
     try:
         html = scraper.get(match_link, timeout=20).text
@@ -146,16 +148,46 @@ def team_player_stats(team_name, match_link, cur):
                 "FROM players_stats WHERE hltv_id=%s", (player_id,)
             )
             row = cur.fetchone()
-
-            need_scrape = True
+            use_cache = False
             if row and row[7]:
                 last_update = row[7]
                 if last_update.tzinfo:
                     last_update = last_update.replace(tzinfo=None)
-                delta = (datetime.now() - last_update).total_seconds()
+                if last_update <= datetime.now() - timedelta(hours=24) or not all(row[i] is not None and row[i] != 0.0 for i in range(7)):
+                    print(f"[SCRAPE] Data too old or incomplete for {nickname_clean} ({player_id}), will scrape")
+                    use_cache = False
+                else:
+                    use_cache = True
 
-                # Используем кэш, если запись <24 часов и данные есть
-                if delta < 86400 and all(row[i] is not None and row[i] != 0.0 for i in range(7)):
+            if use_cache:
+                print(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
+                players_stats.append({
+                    "hltv_id": player_id,
+                    "nickname": nickname_clean,
+                    "rating": float(row[0]),
+                    "round_swing": float(row[1]),
+                    "dpr": float(row[2]),
+                    "kast": float(row[3]),
+                    "multi_kill": float(row[4]),
+                    "adr": float(row[5]),
+                    "kpr": float(row[6])
+                })
+                continue
+
+            # --- Скрейпинг ---
+            stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+            stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
+
+            try:
+                stats_html = scraper.get(stats_url, timeout=20).text
+                soup_stats = BeautifulSoup(stats_html, "html.parser")
+            except Exception as e:
+                print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
+                # не затираем старые данные, просто используем кэш если есть
+                if row:
+                    print(f"[WARN] Keeping existing DB stats for {nickname_clean} ({player_id}) due to scrape failure")
                     players_stats.append({
                         "hltv_id": player_id,
                         "nickname": nickname_clean,
@@ -167,24 +199,6 @@ def team_player_stats(team_name, match_link, cur):
                         "adr": float(row[5]),
                         "kpr": float(row[6])
                     })
-                    need_scrape = False
-
-            if not need_scrape:
-                continue  # Пропускаем скрейпинг
-
-            # --- Скрейпим, если >24 часа или нет данных ---
-            stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
-            end_date = datetime.now().strftime("%Y-%m-%d")
-            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-            stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
-
-            try:
-                stats_html = scraper.get(stats_url, timeout=20).text
-                soup_stats = BeautifulSoup(stats_html, "html.parser")
-            except Exception as e:
-                print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
-                stats_dict.update({k: 0.0 for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]})
-                players_stats.append(stats_dict)
                 continue
 
             # --- Парсим статистику ---
@@ -227,7 +241,7 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            # --- Сохраняем в БД ---
+            # --- Сохраняем в БД только если скрейпинг прошел успешно ---
             cur.execute("""
                 INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
@@ -246,8 +260,8 @@ def team_player_stats(team_name, match_link, cur):
         break
 
     cur.connection.commit()
+    print(f"[INFO] Finished fetching stats for team {team_name}: {players_stats}")
     return players_stats
-
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

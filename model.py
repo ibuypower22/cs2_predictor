@@ -122,6 +122,7 @@ def team_player_stats(team_name, match_link, cur):
         FROM players_stats
         WHERE team_id=%s
     """, (team_id,))
+    scraper = cloudscraper.create_scraper()
     for row in cur.fetchall():
         players_stats.append({
             "hltv_id": row[0],
@@ -134,7 +135,6 @@ def team_player_stats(team_name, match_link, cur):
             "adr": float(row[7]) if row[7] is not None else 0.0,
             "kpr": float(row[8]) if row[8] is not None else 0.0,
         })
-    scraper = cloudscraper.create_scraper()
 
     # --- Если данных в базе нет или нужно обновить, парсим страницу матча ---
     if match_link:

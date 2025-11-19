@@ -105,10 +105,10 @@ def clean_text(text: str) -> str:
 
 
 def team_player_stats(team_name, match_link, cur):
+    scraper = cloudscraper.create_scraper()
     players_stats = []
 
-    # --- Получаем hltv_id игроков этой команды из страницы матча ---
-    scraper = cloudscraper.create_scraper()
+    # --- Получаем страницу матча ---
     try:
         html = scraper.get(match_link, timeout=20).text
     except Exception as e:
@@ -118,7 +118,6 @@ def team_player_stats(team_name, match_link, cur):
     soup = BeautifulSoup(html, "html.parser")
     lineup_divs = soup.select(".lineup")
 
-    team_player_ids = []
     for team_div in lineup_divs:
         team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
         if not team_name_el:
@@ -129,35 +128,132 @@ def team_player_stats(team_name, match_link, cur):
 
         for player_div in team_div.select(".player-compare")[:5]:
             player_id = player_div.get("data-player-id")
-            if player_id:
-                team_player_ids.append(int(player_id))
-        break  # нашли команду, дальше не нужно
+            if not player_id:
+                continue
 
-    if not team_player_ids:
-        return []
+            # --- Получаем никнейм ---
+            img = player_div.select_one("img.player-photo")
+            if img and img.has_attr("alt"):
+                alt_text = img["alt"]
+                nickname = alt_text.split("'")[1].strip() if "'" in alt_text else alt_text.strip()
+            else:
+                nickname = f"Player_{player_id}"
 
-    # --- Берём данные из базы для этих игроков ---
-    cur.execute(
-        "SELECT hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr "
-        "FROM players_stats WHERE hltv_id = ANY(%s)",
-        (team_player_ids,)
-    )
+            # --- Чистим ник перед записью в БД ---  ← CLEAN
+            nickname_clean = clean_text(nickname)
 
-    for row in cur.fetchall():
-        players_stats.append({
-            "hltv_id": row[0],
-            "nickname": row[1],
-            "rating": float(row[2]),
-            "round_swing": float(row[3]),
-            "dpr": float(row[4]),
-            "kast": float(row[5]),
-            "multi_kill": float(row[6]),
-            "adr": float(row[7]),
-            "kpr": float(row[8])
-        })
+            # --- Проверка кэша ---
+            cur.execute(
+                "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
+                "FROM players_stats WHERE hltv_id=%s", (int(player_id),)
+            )
+            row = cur.fetchone()
 
+            if row and row[7]:
+                last_update = row[7]
+                if last_update.tzinfo:
+                    last_update = last_update.replace(tzinfo=None)
+                delta = (datetime.now() - last_update).total_seconds()
+
+                if delta < 86400 and all(row[i] is not None and row[i] != 0.0 for i in range(7)):
+                    players_stats.append({
+                        "hltv_id": player_id,
+                        "nickname": nickname_clean,  # ← используем очищенный
+                        "rating": float(row[0]),
+                        "round_swing": float(row[1]),
+                        "dpr": float(row[2]),
+                        "kast": float(row[3]),
+                        "multi_kill": float(row[4]),
+                        "adr": float(row[5]),
+                        "kpr": float(row[6])
+                    })
+                    continue
+
+            # --- Скрейпим если нужно ---
+            stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
+
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+
+            # URL ДОЛЖЕН ИСПОЛЬЗОВАТЬ ОРИГИНАЛЬНЫЙ ник, НЕ ЧИСТЫЙ
+            stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
+
+            try:
+                stats_html = scraper.get(stats_url, timeout=20).text
+                soup_stats = BeautifulSoup(stats_html, "html.parser")
+            except Exception as e:
+                print(f"[ERROR] Unable to retrieve stats page for {nickname}: {e}")
+                stats_dict.update({
+                    "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
+                    "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0
+                })
+                players_stats.append(stats_dict)
+                continue
+
+            # --- rating ---
+            rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
+            if rating_el:
+                try:
+                    stats_dict["rating"] = float(Decimal(rating_el.string.strip()))
+                except:
+                    stats_dict["rating"] = 0.0
+
+            # --- round swing ---
+            for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
+                label_el = box.select_one(".player-summary-stat-box-data-text")
+                value_el = box.select_one(".player-summary-stat-box-data")
+                if label_el and value_el and "round swing" in label_el.get_text(strip=True).lower():
+                    value_text = "".join(c for c in value_el.get_text(strip=True) if c in "0123456789.-")
+                    try:
+                        stats_dict["round_swing"] = float(Decimal(value_text))
+                    except:
+                        stats_dict["round_swing"] = 0.0
+                    break
+
+            # --- Остальные ---
+            stats_dict.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
+
+            for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
+                parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
+                if not parent_label:
+                    continue
+                label = parent_label.get_text(strip=True).lower()
+                value_text = "".join(c for c in metric_div.get_text(strip=True) if c in "0123456789.")
+                try:
+                    value = float(value_text)
+                except:
+                    continue
+                if "dpr" in label:
+                    stats_dict["dpr"] = value
+                elif "kast" in label:
+                    stats_dict["kast"] = value
+                elif "multi-kill" in label:
+                    stats_dict["multi_kill"] = value
+                elif "adr" in label:
+                    stats_dict["adr"] = value
+                elif "kpr" in label:
+                    stats_dict["kpr"] = value
+
+            # --- Сохраняем в БД ---
+            cur.execute("""
+                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                ON CONFLICT (hltv_id) DO UPDATE
+                SET nickname=EXCLUDED.nickname,
+                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
+                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
+                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
+                    last_update=NOW()
+            """, (int(stats_dict["hltv_id"]), stats_dict["nickname"], stats_dict["rating"],
+                  stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
+                  stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
+
+            players_stats.append(stats_dict)
+
+        break
+
+    cur.connection.commit()
     return players_stats
-
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

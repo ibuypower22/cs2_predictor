@@ -135,6 +135,7 @@ def team_player_stats(team_name, match_link, cur):
             "kpr": float(row[8]) if row[8] is not None else 0.0,
         })
     scraper = cloudscraper.create_scraper()
+
     # --- Если данных в базе нет или нужно обновить, парсим страницу матча ---
     if match_link:
         try:

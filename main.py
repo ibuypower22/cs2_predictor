@@ -546,7 +546,7 @@ for i, m in enumerate(filtered_matches):
             if not stats_list:
                 st.write(f"No data for {team_name}")
                 return
-            unique_players = {p['hltv_id']: p for p in stats_list}.values()
+            unique_players = {f"{p.get('hltv_id')}_{p['nickname']}": p for p in stats_list}.values()
             df = pd.DataFrame(unique_players)
             df = df[["nickname", "rating", "round_swing", "dpr", "kast", "multi_kill", "adr", "kpr"]]
             df.index = range(1, len(df) + 1)

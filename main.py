@@ -52,7 +52,6 @@ DB_PARAMS = {
     "port": 25251  # порт из public URL
 }
 
-
 # ----------------- Получение матчей -----------------
 def get_matches():
 
@@ -206,7 +205,6 @@ def get_matches():
 
     return matches
 
-
 # --- Загружаем матчи с HLTV ---
 CACHE_FILE = "matches_cache.json"
 CACHE_EXPIRY_HOURS = 1
@@ -357,8 +355,6 @@ def build_model_features(team1, team2):
      }])
 
     return X_new
-
-
 
 # --- Подключение к БД ---
 conn = psycopg2.connect(**DB_PARAMS)

@@ -108,7 +108,8 @@ def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
 
-    # --- Получаем страницу матча ---
+    print(f"[INFO] Fetching stats for team: {team_name}")
+
     try:
         html = scraper.get(match_link, timeout=20).text
     except Exception as e:
@@ -131,7 +132,6 @@ def team_player_stats(team_name, match_link, cur):
             if not player_id:
                 continue
 
-            # --- Получаем никнейм ---
             img = player_div.select_one("img.player-photo")
             if img and img.has_attr("alt"):
                 alt_text = img["alt"]
@@ -139,66 +139,61 @@ def team_player_stats(team_name, match_link, cur):
             else:
                 nickname = f"Player_{player_id}"
 
-            # --- Чистим ник перед записью в БД ---  ← CLEAN
             nickname_clean = clean_text(nickname)
 
-            # --- Проверка кэша ---
+            # Проверка кэша
             cur.execute(
                 "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
                 "FROM players_stats WHERE hltv_id=%s", (player_id,)
             )
             row = cur.fetchone()
 
+            use_cache = False
             if row and row[7]:
                 last_update = row[7]
                 if last_update.tzinfo:
                     last_update = last_update.replace(tzinfo=None)
                 delta = (datetime.now() - last_update).total_seconds()
-
                 if delta < 86400 and all(row[i] is not None and row[i] != 0.0 for i in range(7)):
-                    players_stats.append({
-                        "hltv_id": player_id,
-                        "nickname": nickname_clean,  # ← используем очищенный
-                        "rating": float(row[0]),
-                        "round_swing": float(row[1]),
-                        "dpr": float(row[2]),
-                        "kast": float(row[3]),
-                        "multi_kill": float(row[4]),
-                        "adr": float(row[5]),
-                        "kpr": float(row[6])
-                    })
-                    continue
+                    use_cache = True
 
-            # --- Скрейпим если нужно ---
+            if use_cache:
+                print(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
+                players_stats.append({
+                    "hltv_id": player_id,
+                    "nickname": nickname_clean,
+                    "rating": float(row[0]),
+                    "round_swing": float(row[1]),
+                    "dpr": float(row[2]),
+                    "kast": float(row[3]),
+                    "multi_kill": float(row[4]),
+                    "adr": float(row[5]),
+                    "kpr": float(row[6])
+                })
+                continue
+
+            print(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
 
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-
-            # URL ДОЛЖЕН ИСПОЛЬЗОВАТЬ ОРИГИНАЛЬНЫЙ ник, НЕ ЧИСТЫЙ
             stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
 
             try:
                 stats_html = scraper.get(stats_url, timeout=20).text
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
-                print(f"[ERROR] Unable to retrieve stats page for {nickname}: {e}")
-                stats_dict.update({
-                    "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
-                    "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0
-                })
+                print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
+                stats_dict.update({k: 0.0 for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]})
                 players_stats.append(stats_dict)
                 continue
 
             # --- rating ---
             rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
-            if rating_el:
-                try:
-                    stats_dict["rating"] = float(Decimal(rating_el.string.strip()))
-                except:
-                    stats_dict["rating"] = 0.0
+            stats_dict["rating"] = float(Decimal(rating_el.string.strip())) if rating_el else 0.0
 
             # --- round swing ---
+            stats_dict["round_swing"] = 0.0
             for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
                 label_el = box.select_one(".player-summary-stat-box-data-text")
                 value_el = box.select_one(".player-summary-stat-box-data")
@@ -210,8 +205,9 @@ def team_player_stats(team_name, match_link, cur):
                         stats_dict["round_swing"] = 0.0
                     break
 
-            # --- Остальные ---
-            stats_dict.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
+            # Остальные метрики
+            for k in ["dpr","kast","multi_kill","adr","kpr"]:
+                stats_dict[k] = 0.0
 
             for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
                 parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
@@ -234,19 +230,24 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            # --- Сохраняем в БД ---
-            cur.execute("""
-                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                ON CONFLICT (hltv_id) DO UPDATE
-                SET nickname=EXCLUDED.nickname,
-                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
-                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
-                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
-                    last_update=NOW()
-            """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
-                  stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
-                  stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
+            print(f"[DB] Inserting stats for {nickname_clean} ({player_id}): {stats_dict}")
+
+            try:
+                cur.execute("""
+                    INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                    ON CONFLICT (hltv_id) DO UPDATE
+                    SET nickname=EXCLUDED.nickname,
+                        rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
+                        kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
+                        adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
+                        last_update=NOW()
+                """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
+                      stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
+                      stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
+            except Exception as e:
+                print(f"[ERROR] DB insert failed for {nickname_clean} ({player_id}): {e}")
+                cur.connection.rollback()
 
             players_stats.append(stats_dict)
 
@@ -254,6 +255,7 @@ def team_player_stats(team_name, match_link, cur):
 
     cur.connection.commit()
     return players_stats
+
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

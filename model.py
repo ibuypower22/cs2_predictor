@@ -104,16 +104,22 @@ def clean_text(text: str) -> str:
     return text
 
 
+import cloudscraper
+from bs4 import BeautifulSoup
+from datetime import datetime, timedelta
+from decimal import Decimal
+import streamlit as st
+
 def team_player_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()
     players_stats = []
 
-    print(f"[INFO] Fetching stats for team: {team_name}")
+    st.write(f"[INFO] Fetching stats for team: {team_name}")
 
     try:
         html = scraper.get(match_link, timeout=20).text
     except Exception as e:
-        print(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
+        st.error(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
         return []
 
     soup = BeautifulSoup(html, "html.parser")
@@ -141,7 +147,7 @@ def team_player_stats(team_name, match_link, cur):
 
             nickname_clean = clean_text(nickname)
 
-            # Проверка кэша
+            # --- Проверка кэша ---
             cur.execute(
                 "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
                 "FROM players_stats WHERE hltv_id=%s", (player_id,)
@@ -158,7 +164,7 @@ def team_player_stats(team_name, match_link, cur):
                     use_cache = True
 
             if use_cache:
-                print(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
+                st.text(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
                 players_stats.append({
                     "hltv_id": player_id,
                     "nickname": nickname_clean,
@@ -172,7 +178,7 @@ def team_player_stats(team_name, match_link, cur):
                 })
                 continue
 
-            print(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
+            st.text(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
 
             end_date = datetime.now().strftime("%Y-%m-%d")
@@ -183,7 +189,7 @@ def team_player_stats(team_name, match_link, cur):
                 stats_html = scraper.get(stats_url, timeout=20).text
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
-                print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
+                st.error(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
                 stats_dict.update({k: 0.0 for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]})
                 players_stats.append(stats_dict)
                 continue
@@ -205,7 +211,7 @@ def team_player_stats(team_name, match_link, cur):
                         stats_dict["round_swing"] = 0.0
                     break
 
-            # Остальные метрики
+            # --- Остальные метрики ---
             for k in ["dpr","kast","multi_kill","adr","kpr"]:
                 stats_dict[k] = 0.0
 
@@ -230,7 +236,7 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            print(f"[DB] Inserting stats for {nickname_clean} ({player_id}): {stats_dict}")
+            st.text(f"[DB] Inserting stats for {nickname_clean} ({player_id}): {stats_dict}")
 
             try:
                 cur.execute("""
@@ -246,7 +252,7 @@ def team_player_stats(team_name, match_link, cur):
                       stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
                       stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
             except Exception as e:
-                print(f"[ERROR] DB insert failed for {nickname_clean} ({player_id}): {e}")
+                st.error(f"[ERROR] DB insert failed for {nickname_clean} ({player_id}): {e}")
                 cur.connection.rollback()
 
             players_stats.append(stats_dict)
@@ -254,7 +260,10 @@ def team_player_stats(team_name, match_link, cur):
         break
 
     cur.connection.commit()
+    st.write(f"[INFO] Finished fetching stats for team {team_name}:")
+    st.write(players_stats)
     return players_stats
+
 
 
 def team_match_stats(team_name, match_link, cur):

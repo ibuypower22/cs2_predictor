@@ -133,6 +133,7 @@ def team_player_stats(team_name, match_link, cur):
         """, (team_id,))
         for row in cur.fetchall():
             players_stats.append({
+                "hltv_id": None,
                 "nickname": row[0],
                 "rating": float(row[1]) if row[1] is not None else 0.0,
                 "round_swing": float(row[2]) if row[2] is not None else 0.0,

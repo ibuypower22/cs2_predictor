@@ -141,14 +141,14 @@ def team_player_stats(team_name, match_link, cur):
 
             nickname_clean = clean_text(nickname)
 
-            # --- Проверка кэша без учета времени ---
+            # --- Берём данные из базы без проверки времени ---
             cur.execute(
-                "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update "
-                "FROM players_stats WHERE hltv_id=%s", (player_id,)
+                "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr FROM players_stats WHERE hltv_id=%s",
+                (player_id,)
             )
             row = cur.fetchone()
 
-            if row:  # просто используем кэш если есть
+            if row:
                 print(f"[CACHE] Using cached stats for {nickname_clean} ({player_id})")
                 players_stats.append({
                     "hltv_id": player_id,
@@ -161,11 +161,11 @@ def team_player_stats(team_name, match_link, cur):
                     "adr": float(row[5]),
                     "kpr": float(row[6])
                 })
-                continue
+                continue  # не скрейпим, используем кэш
 
             print(f"[SCRAPE] Scraping stats for {nickname_clean} ({player_id})")
 
-            # --- Остальной код скрейпинга как у тебя ---
+            # --- Остальной скрейпинг ---
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
@@ -176,12 +176,24 @@ def team_player_stats(team_name, match_link, cur):
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
                 print(f"[ERROR] Unable to retrieve stats page for {nickname_clean}: {e}")
+                # Если скрейп не удалось, оставляем нули
+                players_stats.append({
+                    "hltv_id": player_id,
+                    "nickname": nickname_clean,
+                    "rating": 0.0,
+                    "round_swing": 0.0,
+                    "dpr": 0.0,
+                    "kast": 0.0,
+                    "multi_kill": 0.0,
+                    "adr": 0.0,
+                    "kpr": 0.0
+                })
                 continue
 
             rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
-            stats_dict["rating"] = float(Decimal(rating_el.string.strip())) if rating_el else None
+            stats_dict["rating"] = float(Decimal(rating_el.string.strip())) if rating_el else 0.0
 
-            stats_dict["round_swing"] = None
+            stats_dict["round_swing"] = 0.0
             for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
                 label_el = box.select_one(".player-summary-stat-box-data-text")
                 value_el = box.select_one(".player-summary-stat-box-data")
@@ -190,11 +202,11 @@ def team_player_stats(team_name, match_link, cur):
                     try:
                         stats_dict["round_swing"] = float(Decimal(value_text))
                     except:
-                        stats_dict["round_swing"] = None
+                        stats_dict["round_swing"] = 0.0
                     break
 
             for k in ["dpr","kast","multi_kill","adr","kpr"]:
-                stats_dict[k] = None
+                stats_dict[k] = 0.0
 
             for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
                 parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
@@ -217,19 +229,19 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            if any(stats_dict[k] is not None for k in ["rating","round_swing","dpr","kast","multi_kill","adr","kpr"]):
-                cur.execute("""
-                    INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                    ON CONFLICT (hltv_id) DO UPDATE
-                    SET nickname=EXCLUDED.nickname,
-                        rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
-                        kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
-                        adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
-                        last_update=NOW()
-                """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
-                      stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
-                      stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
+            # --- Сохраняем в БД ---
+            cur.execute("""
+                INSERT INTO players_stats (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                ON CONFLICT (hltv_id) DO UPDATE
+                SET nickname=EXCLUDED.nickname,
+                    rating=EXCLUDED.rating, round_swing=EXCLUDED.round_swing, dpr=EXCLUDED.dpr,
+                    kast=EXCLUDED.kast, multi_kill=EXCLUDED.multi_kill,
+                    adr=EXCLUDED.adr, kpr=EXCLUDED.kpr,
+                    last_update=NOW()
+            """, (stats_dict["hltv_id"], stats_dict["nickname"], stats_dict["rating"],
+                  stats_dict["round_swing"], stats_dict["dpr"], stats_dict["kast"],
+                  stats_dict["multi_kill"], stats_dict["adr"], stats_dict["kpr"]))
 
             players_stats.append(stats_dict)
 
@@ -238,6 +250,7 @@ def team_player_stats(team_name, match_link, cur):
     cur.connection.commit()
     print(f"[INFO] Finished fetching stats for team {team_name}: {players_stats}")
     return players_stats
+
 
 
 

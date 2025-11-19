@@ -1,0 +1,9 @@
+streamlit
+cloudscraper
+beautifulsoup4
+lxml
+psycopg2-binary
+pandas
+numpy
+unidecode
+streamlit-autorefresh

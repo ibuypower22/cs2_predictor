@@ -566,7 +566,7 @@ for i, m in enumerate(filtered_matches):
 
         maps_table_html = f"""
         <table style='border-collapse: collapse; width: 100%;'>
-        <tr><th>Карта</th><th>{m['team1']}</th><th>{m['team2']}</th></tr>
+        <tr><th>Map</th><th>{m['team1']}</th><th>{m['team2']}</th></tr>
         {table_rows}
         </table>
         """

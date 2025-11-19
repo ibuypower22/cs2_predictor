@@ -1,28 +1,28 @@
 [
   {
-    "tournament": "ESL Challenger League Season 50 Asia-Pacific Finals",
-    "team1": "Lynn Vision",
-    "team2": "Chinggis Warriors",
+    "tournament": "CCT Season 3 Europe Series 11",
+    "team1": "Partizan",
+    "team2": "CPH Wolves",
     "format": "Live",
     "status": "live",
-    "match_link": "https://www.hltv.org/matches/2388215/lynn-vision-vs-chinggis-warriors-esl-challenger-league-season-50-asia-pacific-finals",
+    "match_link": "https://www.hltv.org/matches/2387825/partizan-vs-cph-wolves-cct-season-3-europe-series-11",
     "maps": [
       {
         "map": "Inferno",
         "status": "played"
       },
       {
-        "map": "Dust2",
+        "map": "Nuke",
         "status": "upcoming"
       },
       {
-        "map": "Nuke",
+        "map": "Mirage",
         "status": "upcoming"
       }
     ],
     "upcoming_maps": [
-      "Dust2",
-      "Nuke"
+      "Nuke",
+      "Mirage"
     ],
     "match_time": null
   },
@@ -47,37 +47,6 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-19 20:00"
-  },
-  {
-    "tournament": "CCT Season 3 Europe Series 11",
-    "team1": "Partizan",
-    "team2": "CPH Wolves",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2387825/partizan-vs-cph-wolves-cct-season-3-europe-series-11",
-    "maps": [
-      {
-        "map": "Inferno",
-        "action": "picked",
-        "team": "3."
-      },
-      {
-        "map": "Nuke",
-        "action": "picked",
-        "team": "4."
-      },
-      {
-        "map": "Mirage",
-        "action": "left over",
-        "team": null
-      }
-    ],
-    "upcoming_maps": [
-      "Inferno",
-      "Nuke",
-      "Mirage"
-    ],
-    "match_time": "2025-11-19 17:05"
   },
   {
     "tournament": "CCT Season 3 Europe Series 11",
@@ -375,6 +344,17 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-21 04:00"
+  },
+  {
+    "tournament": "ESL Challenger League Season 50 Asia-Pacific Finals",
+    "team1": "Rare Atom",
+    "team2": "Lynn Vision",
+    "format": "Upcoming",
+    "status": "upcoming",
+    "match_link": "https://www.hltv.org/matches/2388216/rare-atom-vs-lynn-vision-esl-challenger-league-season-50-asia-pacific-finals",
+    "maps": [],
+    "upcoming_maps": [],
+    "match_time": "2025-11-20 16:00"
   },
   {
     "tournament": "NODWIN Clutch Series 3 Closed Qualifier",

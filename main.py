@@ -410,8 +410,9 @@ for i, m in enumerate(filtered_matches):
                 continue  # прекращаем выполнение, не грузим данные
 
         # --- Получаем игроков и инфу о командах ---
-        players_stats_team1 = team_player_stats(m['team1'], m['match_link'], cur)
-        players_stats_team2 = team_player_stats(m['team2'], m['match_link'], cur)
+        players_stats_team1, logs1 = team_player_stats(m['team1'], m['match_link'], cur, ui_log=True)
+        players_stats_team2, logs2 = team_player_stats(m['team2'], m['match_link'], cur, ui_log=True)
+
         team1_info = team_match_stats(m['team1'], m['match_link'], cur)
         team2_info = team_match_stats(m['team2'], m['match_link'], cur)
 
@@ -573,7 +574,11 @@ for i, m in enumerate(filtered_matches):
 
         with st.expander("Map winrate(%)"):
             st.markdown(maps_table_html, unsafe_allow_html=True)
-
+        st.subheader("Player Stats Logs")
+        for line in logs1:
+            st.text(line)
+        for line in logs2:
+            st.text(line)
 cur.close()
 conn.close()
 

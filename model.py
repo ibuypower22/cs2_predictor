@@ -107,98 +107,86 @@ def clean_text(text: str) -> str:
 def team_player_stats(team_name, match_link, cur):
     players_stats = []
 
-    # --- Получаем hltv_id команды и дату последнего обновления ---
-    cur.execute("SELECT hltv_id, last_update FROM teams WHERE name=%s", (team_name,))
+    # --- Получаем hltv_id команды ---
+    cur.execute("SELECT hltv_id FROM teams WHERE name=%s", (team_name,))
     res = cur.fetchone()
     if not res:
         print(f"[ERROR] Team {team_name} not found in DB")
         return []
-    team_id, last_update = res
+    team_id = res[0]
 
-    # --- Проверяем дату обновления ---
-    use_db_only = False
-    if last_update:
-        if last_update.tzinfo:
-            last_update = last_update.replace(tzinfo=None)
-        delta = (datetime.now() - last_update).total_seconds()
-        if delta < 86400:  # <24 часа
-            use_db_only = True
+    # --- Берём всех игроков с team_id = hltv_id ---
+    cur.execute("""
+        SELECT hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr
+        FROM players_stats
+        WHERE team_id=%s
+    """, (team_id,))
+    for row in cur.fetchall():
+        players_stats.append({
+            "hltv_id": row[0],
+            "nickname": row[1],
+            "rating": float(row[2]) if row[2] is not None else 0.0,
+            "round_swing": float(row[3]) if row[3] is not None else 0.0,
+            "dpr": float(row[4]) if row[4] is not None else 0.0,
+            "kast": float(row[5]) if row[5] is not None else 0.0,
+            "multi_kill": float(row[6]) if row[6] is not None else 0.0,
+            "adr": float(row[7]) if row[7] is not None else 0.0,
+            "kpr": float(row[8]) if row[8] is not None else 0.0,
+        })
 
-    if use_db_only:
-        # --- Берём всех игроков с team_id = hltv_id ---
-        cur.execute("""
-            SELECT nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr
-            FROM players_stats
-            WHERE team_id=%s
-        """, (team_id,))
-        for row in cur.fetchall():
-            players_stats.append({
-                "hltv_id": None,
-                "nickname": row[0],
-                "rating": float(row[1]) if row[1] is not None else 0.0,
-                "round_swing": float(row[2]) if row[2] is not None else 0.0,
-                "dpr": float(row[3]) if row[3] is not None else 0.0,
-                "kast": float(row[4]) if row[4] is not None else 0.0,
-                "multi_kill": float(row[5]) if row[5] is not None else 0.0,
-                "adr": float(row[6]) if row[6] is not None else 0.0,
-                "kpr": float(row[7]) if row[7] is not None else 0.0,
-            })
-        return players_stats
+    # --- Если данных в базе нет, можно парсить локально ---
+    if not players_stats and match_link:
+        try:
+            scraper = cloudscraper.create_scraper()
+            html = scraper.get(match_link, timeout=20).text
+            soup = BeautifulSoup(html, "html.parser")
+            lineup_divs = soup.select(".lineup")
+        except Exception as e:
+            print(f"[WARN] Failed to retrieve match page {match_link}: {e}")
+            return []
 
-    # --- Если данные старые или нет кэша, можно оставить парсинг для локалки ---
-    try:
-        scraper = cloudscraper.create_scraper()
-        html = scraper.get(match_link, timeout=20).text
-        soup = BeautifulSoup(html, "html.parser")
-        lineup_divs = soup.select(".lineup")
-    except Exception as e:
-        print(f"[WARN] Failed to retrieve match page {match_link}: {e}")
-        return []
+        current_player_ids = []
 
-    current_player_ids = []
-
-    for team_div in lineup_divs:
-        team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
-        if not team_name_el:
-            continue
-        current_team_name = team_name_el.get_text(strip=True)
-        if current_team_name != team_name:
-            continue
-
-        for player_div in team_div.select(".player-compare")[:5]:
-            player_id = player_div.get("data-player-id")
-            if not player_id:
+        for team_div in lineup_divs:
+            team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
+            if not team_name_el:
                 continue
-            current_player_ids.append(int(player_id))
+            current_team_name = team_name_el.get_text(strip=True)
+            if current_team_name != team_name:
+                continue
 
-            # --- Никнейм ---
-            img = player_div.select_one("img.player-photo")
-            if img and img.has_attr("alt"):
-                alt_text = img["alt"]
-                nickname = alt_text.split("'")[1].strip() if "'" in alt_text else alt_text.strip()
-            else:
-                nickname = f"Player_{player_id}"
-            nickname_clean = clean_text(nickname)
+            for player_div in team_div.select(".player-compare")[:5]:
+                player_id = player_div.get("data-player-id")
+                if not player_id:
+                    continue
+                current_player_ids.append(int(player_id))
 
-            # --- Берём данные из кэша ---
-            cur.execute("""
-                SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr
-                FROM players_stats WHERE hltv_id=%s
-            """, (int(player_id),))
-            row = cur.fetchone()
-            if row:
-                players_stats.append({
-                    "nickname": nickname_clean,
-                    "rating": float(row[0]) if row[0] is not None else 0.0,
-                    "round_swing": float(row[1]) if row[1] is not None else 0.0,
-                    "dpr": float(row[2]) if row[2] is not None else 0.0,
-                    "kast": float(row[3]) if row[3] is not None else 0.0,
-                    "multi_kill": float(row[4]) if row[4] is not None else 0.0,
-                    "adr": float(row[5]) if row[5] is not None else 0.0,
-                    "kpr": float(row[6]) if row[6] is not None else 0.0,
-                })
+                img = player_div.select_one("img.player-photo")
+                nickname = img["alt"].split("'")[1].strip() if img and "'" in img["alt"] else img["alt"].strip() if img else f"Player_{player_id}"
+                nickname_clean = clean_text(nickname)
+
+                # --- Берём из кэша ---
+                cur.execute("""
+                    SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr
+                    FROM players_stats WHERE hltv_id=%s
+                """, (int(player_id),))
+                row = cur.fetchone()
+                if row:
+                    players_stats.append({
+                        "hltv_id": int(player_id),
+                        "nickname": nickname_clean,
+                        "rating": float(row[0]) if row[0] is not None else 0.0,
+                        "round_swing": float(row[1]) if row[1] is not None else 0.0,
+                        "dpr": float(row[2]) if row[2] is not None else 0.0,
+                        "kast": float(row[3]) if row[3] is not None else 0.0,
+                        "multi_kill": float(row[4]) if row[4] is not None else 0.0,
+                        "adr": float(row[5]) if row[5] is not None else 0.0,
+                        "kpr": float(row[6]) if row[6] is not None else 0.0,
+                    })
+            break
 
     return players_stats
+
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

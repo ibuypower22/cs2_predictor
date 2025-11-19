@@ -105,28 +105,47 @@ def clean_text(text: str) -> str:
 
 
 def team_player_stats(team_name, match_link, cur):
-    """
-    Временная функция: берёт только stats игроков из базы, скрейпинг отключён.
-    Возвращает список словарей с hltv_id, nickname и метриками.
-    """
     players_stats = []
 
-    # --- Получаем всех игроков команды из базы ---
-    # Тут предполагается, что у вас есть связь team_name -> hltv_id в вашей базе.
-    # Если нет, можно просто проходить по match_link и вытаскивать hltv_id из вашего источника.
-    cur.execute(
-        """
-        SELECT hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update
-        FROM players_stats
-        WHERE last_update IS NOT NULL
-        """
-    )
-    rows = cur.fetchall()
+    # --- Получаем hltv_id игроков этой команды из страницы матча ---
+    scraper = cloudscraper.create_scraper()
+    try:
+        html = scraper.get(match_link, timeout=20).text
+    except Exception as e:
+        print(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
+        return []
 
-    for row in rows:
-        # Преобразуем в словарь
-        player_stat = {
-            "hltv_id": int(row[0]),   # оставляем integer
+    soup = BeautifulSoup(html, "html.parser")
+    lineup_divs = soup.select(".lineup")
+
+    team_player_ids = []
+    for team_div in lineup_divs:
+        team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
+        if not team_name_el:
+            continue
+        current_team_name = team_name_el.get_text(strip=True)
+        if current_team_name != team_name:
+            continue
+
+        for player_div in team_div.select(".player-compare")[:5]:
+            player_id = player_div.get("data-player-id")
+            if player_id:
+                team_player_ids.append(int(player_id))
+        break  # нашли команду, дальше не нужно
+
+    if not team_player_ids:
+        return []
+
+    # --- Берём данные из базы для этих игроков ---
+    cur.execute(
+        "SELECT hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr "
+        "FROM players_stats WHERE hltv_id = ANY(%s)",
+        (team_player_ids,)
+    )
+
+    for row in cur.fetchall():
+        players_stats.append({
+            "hltv_id": row[0],
             "nickname": row[1],
             "rating": float(row[2]),
             "round_swing": float(row[3]),
@@ -135,10 +154,8 @@ def team_player_stats(team_name, match_link, cur):
             "multi_kill": float(row[6]),
             "adr": float(row[7]),
             "kpr": float(row[8])
-        }
-        players_stats.append(player_stat)
+        })
 
-    print(f"[INFO] Fetched {len(players_stats)} players from DB for team {team_name}")
     return players_stats
 
 

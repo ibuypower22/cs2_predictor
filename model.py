@@ -104,7 +104,7 @@ def clean_text(text: str) -> str:
     return text
 
 
-def team_player_stats_from_db(team_name, match_link, cur):
+def team_player_stats(team_name, match_link, cur):
     """
     Временная функция: берёт только stats игроков из базы, скрейпинг отключён.
     Возвращает список словарей с hltv_id, nickname и метриками.

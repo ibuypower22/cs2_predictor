@@ -105,7 +105,7 @@ def clean_text(text: str) -> str:
 
 
 def team_player_stats(team_name, match_link, cur):
-    scraper = cloudscraper.create_scraper()
+
     players_stats = []
 
     # --- Получаем hltv_id команды ---
@@ -134,7 +134,7 @@ def team_player_stats(team_name, match_link, cur):
             "adr": float(row[7]) if row[7] is not None else 0.0,
             "kpr": float(row[8]) if row[8] is not None else 0.0,
         })
-
+    scraper = cloudscraper.create_scraper()
     # --- Если данных в базе нет или нужно обновить, парсим страницу матча ---
     if match_link:
         try:
@@ -273,6 +273,7 @@ def team_player_stats(team_name, match_link, cur):
             )
 
     return players_stats
+
 
 
 def team_match_stats(team_name, match_link, cur):

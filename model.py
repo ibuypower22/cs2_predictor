@@ -257,14 +257,46 @@ def team_player_stats(team_name, match_link, cur):
                     elif "kpr" in label:
                         stats_dict["kpr"] = value
 
-                # --- Обновляем team_id и сохраняем в БД ---
-                cur.execute(
-                    "UPDATE players_stats SET team_id=%s WHERE hltv_id=%s",
-                    (team_id, player_id)
-                )
+                # --- Сохраняем игрока в базе ---
+                cur.execute("""
+                    INSERT INTO players_stats
+                        (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, team_id, last_update)
+                    VALUES
+                        (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (hltv_id) DO UPDATE SET
+                        nickname = EXCLUDED.nickname,
+                        rating = EXCLUDED.rating,
+                        round_swing = EXCLUDED.round_swing,
+                        dpr = EXCLUDED.dpr,
+                        kast = EXCLUDED.kast,
+                        multi_kill = EXCLUDED.multi_kill,
+                        adr = EXCLUDED.adr,
+                        kpr = EXCLUDED.kpr,
+                        team_id = EXCLUDED.team_id,
+                        last_update = NOW();
+                """, (
+                    player_id,
+                    nickname_clean,
+                    stats_dict.get("rating", 0.0),
+                    stats_dict.get("round_swing", 0.0),
+                    stats_dict.get("dpr", 0.0),
+                    stats_dict.get("kast", 0.0),
+                    stats_dict.get("multi_kill", 0.0),
+                    stats_dict.get("adr", 0.0),
+                    stats_dict.get("kpr", 0.0),
+                    team_id
+                ))
+
                 players_stats.append(stats_dict)
 
             break
+
+        # --- Обнуляем team_id у игроков, которых нет в текущем составе ---
+        if current_player_ids:
+            cur.execute(
+                "UPDATE players_stats SET team_id=NULL WHERE team_id=%s AND hltv_id NOT IN %s",
+                (team_id, tuple(current_player_ids))
+            )
 
     return players_stats
 

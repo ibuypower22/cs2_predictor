@@ -116,17 +116,34 @@ def team_player_stats(team_name, match_link, cur):
         return []
     team_id = res[0]
 
-    # --- Получаем страницу матча ---
+    # --- Пытаемся получить страницу матча ---
     try:
         html = scraper.get(match_link, timeout=20).text
+        soup = BeautifulSoup(html, "html.parser")
+        lineup_divs = soup.select(".lineup")
     except Exception as e:
-        print(f"[ERROR] Failed to retrieve match page {match_link}: {e}")
-        return []
+        print(f"[WARN] Failed to retrieve match page {match_link}: {e}")
+        # --- fallback: берем всех игроков с team_id ---
+        cur.execute("""
+            SELECT nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr
+            FROM players_stats WHERE team_id=%s
+        """, (team_id,))
+        for row in cur.fetchall():
+            players_stats.append({
+                "nickname": row[0],
+                "rating": float(row[1]),
+                "round_swing": float(row[2]),
+                "dpr": float(row[3]),
+                "kast": float(row[4]),
+                "multi_kill": float(row[5]),
+                "adr": float(row[6]),
+                "kpr": float(row[7]),
+            })
+        return players_stats
 
-    soup = BeautifulSoup(html, "html.parser")
-    lineup_divs = soup.select(".lineup")
     current_player_ids = []
 
+    # --- Скрейпинг состава ---
     for team_div in lineup_divs:
         team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
         if not team_name_el:
@@ -182,20 +199,17 @@ def team_player_stats(team_name, match_link, cur):
                     )
                     continue
 
-            # --- Скрейпим если нужно ---
+            # --- Скрейпим stats ---
             stats_dict = {"hltv_id": player_id, "nickname": nickname_clean}
-
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
-
-            # URL ДОЛЖЕН ИСПОЛЬЗОВАТЬ ОРИГИНАЛЬНЫЙ ник, НЕ ЧИСТЫЙ
             stats_url = f"https://www.hltv.org/stats/players/{player_id}/{nickname.lower()}?startDate={start_date}&endDate={end_date}"
 
             try:
                 stats_html = scraper.get(stats_url, timeout=20).text
                 soup_stats = BeautifulSoup(stats_html, "html.parser")
             except Exception as e:
-                print(f"[ERROR] Unable to retrieve stats page for {nickname}: {e}")
+                print(f"[WARN] Unable to retrieve stats page for {nickname}: {e}")
                 stats_dict.update({
                     "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
                     "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0
@@ -225,7 +239,6 @@ def team_player_stats(team_name, match_link, cur):
 
             # --- Остальные ---
             stats_dict.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
-
             for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
                 parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
                 if not parent_label:
@@ -247,7 +260,7 @@ def team_player_stats(team_name, match_link, cur):
                 elif "kpr" in label:
                     stats_dict["kpr"] = value
 
-            # --- Сохраняем в БД ---
+            # --- Обновляем team_id и сохраняем в БД ---
             cur.execute(
                 "UPDATE players_stats SET team_id=%s WHERE hltv_id=%s",
                 (team_id, player_id)
@@ -256,7 +269,7 @@ def team_player_stats(team_name, match_link, cur):
 
         break
 
-        # --- Обнуляем team_id у игроков, которых нет в текущем составе ---
+    # --- Обнуляем team_id у игроков, которых нет в текущем составе ---
     if current_player_ids:
         cur.execute(
             "UPDATE players_stats SET team_id=NULL WHERE team_id=%s AND hltv_id NOT IN %s",
@@ -265,6 +278,7 @@ def team_player_stats(team_name, match_link, cur):
 
     cur.connection.commit()
     return players_stats
+
 
 def team_match_stats(team_name, match_link, cur):
     scraper = cloudscraper.create_scraper()

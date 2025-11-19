@@ -43,11 +43,11 @@ def parse_date(date_text: str):
 
 
 DB_PARAMS = {
-    "dbname": "cs2_matches",
-    "user": "postgres",
-    "password": "12345",
-    "host": "localhost",
-    "port": 5432
+    "dbname": "railway",  # имя базы в облаке
+    "user": "postgres",   # пользователь
+    "password": "nrrWMrzYFdeaBdvhqNuJDUbKHTIbfOiw",  # пароль из Railway
+    "host": "interchange.proxy.rlwy.net",  # хост из public URL
+    "port": 25251  # порт из public URL
 }
 
 conn = psycopg2.connect(**DB_PARAMS)

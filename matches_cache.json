@@ -13,7 +13,7 @@
       },
       {
         "map": "Nuke",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Ancient",
@@ -21,8 +21,35 @@
       }
     ],
     "upcoming_maps": [
-      "Nuke",
       "Ancient"
+    ],
+    "match_time": null
+  },
+  {
+    "tournament": "ESL Challenger League Season 50 Asia-Pacific Finals",
+    "team1": "Lynn Vision",
+    "team2": "Chinggis Warriors",
+    "format": "Live",
+    "status": "live",
+    "match_link": "https://www.hltv.org/matches/2388215/lynn-vision-vs-chinggis-warriors-esl-challenger-league-season-50-asia-pacific-finals",
+    "maps": [
+      {
+        "map": "Inferno",
+        "status": "upcoming"
+      },
+      {
+        "map": "Dust2",
+        "status": "upcoming"
+      },
+      {
+        "map": "Nuke",
+        "status": "upcoming"
+      }
+    ],
+    "upcoming_maps": [
+      "Inferno",
+      "Dust2",
+      "Nuke"
     ],
     "match_time": null
   },
@@ -40,7 +67,7 @@
       },
       {
         "map": "Overpass",
-        "status": "upcoming"
+        "status": "played"
       },
       {
         "map": "Train",
@@ -48,7 +75,6 @@
       }
     ],
     "upcoming_maps": [
-      "Overpass",
       "Train"
     ],
     "match_time": null
@@ -118,17 +144,6 @@
     "maps": [],
     "upcoming_maps": [],
     "match_time": "2025-11-19 20:00"
-  },
-  {
-    "tournament": "ESL Challenger League Season 50 Asia-Pacific Finals",
-    "team1": "Lynn Vision",
-    "team2": "Chinggis Warriors",
-    "format": "Upcoming",
-    "status": "upcoming",
-    "match_link": "https://www.hltv.org/matches/2388215/lynn-vision-vs-chinggis-warriors-esl-challenger-league-season-50-asia-pacific-finals",
-    "maps": [],
-    "upcoming_maps": [],
-    "match_time": "2025-11-19 16:00"
   },
   {
     "tournament": "DraculaN Season 3Lan",

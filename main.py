@@ -1,3 +1,4 @@
+import json
 import os
 import pickle
 import re
@@ -53,6 +54,7 @@ DB_PARAMS = {
 
 # ----------------- Получение матчей -----------------
 def get_matches():
+
     scraper = cloudscraper.create_scraper()
     matches = []
     seen = set()
@@ -205,10 +207,32 @@ def get_matches():
 
 
 # --- Загружаем матчи с HLTV ---
+CACHE_FILE = "matches_cache.json"
+CACHE_EXPIRY_HOURS = 1
+
 def get_matches_cached(force_reload=False):
-    if "matches" not in st.session_state or force_reload:
-        st.session_state.matches = get_matches()  # твоя функция получения матчей
-    return st.session_state.matches
+    # проверка session_state
+    if "matches" in st.session_state and not force_reload:
+        return st.session_state.matches
+
+    # проверка кэша на диске
+    if not force_reload and os.path.exists(CACHE_FILE):
+        cache_mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
+        if datetime.now() - cache_mtime < timedelta(hours=CACHE_EXPIRY_HOURS):
+            with open(CACHE_FILE, "r", encoding="utf-8") as f:
+                st.session_state.matches = json.load(f)
+                print("Loaded matches from cache")
+                return st.session_state.matches
+
+    # если кэша нет или force_reload=True
+    matches = get_matches()  # твоя функция получения матчей
+    st.session_state.matches = matches
+
+    # сохраняем в кэш
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        json.dump(matches, f, ensure_ascii=False, indent=2)
+
+    return matches
 
 # --- Streamlit интерфейс ---
 st.title("CS2 Matches Predictor")

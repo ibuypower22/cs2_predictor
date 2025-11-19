@@ -19,7 +19,6 @@ DB_PARAMS = {
     "port": 25251  # порт из public URL
 }
 
-
 # --- Загрузка данных ---
 conn = psycopg2.connect(**DB_PARAMS)
 df = pd.read_sql("""

@@ -266,13 +266,6 @@ def team_player_stats(team_name, match_link, cur):
 
             break
 
-        # --- Обнуляем team_id у игроков, которых нет в текущем составе ---
-        if current_player_ids:
-            cur.execute(
-                "UPDATE players_stats SET team_id=NULL WHERE team_id=%s AND hltv_id NOT IN %s",
-                (team_id, tuple(current_player_ids))
-            )
-
     return players_stats
 
 

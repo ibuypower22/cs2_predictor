@@ -198,8 +198,6 @@ def team_player_stats(team_name, match_link, cur):
                     "kpr": float(row[6]) if row[6] is not None else 0.0,
                 })
 
-        break
-
     return players_stats
 
 def team_match_stats(team_name, match_link, cur):

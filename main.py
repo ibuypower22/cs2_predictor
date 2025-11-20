@@ -513,7 +513,7 @@ for i, m in enumerate(filtered_matches):
                         pred = int(model.predict(X_new)[0])
                         winner = m['team1'] if pred == 1 else m['team2']
                         prob_pct = probs[pred] * 100
-                        st.success(f"ML-model **{selected_model_name}**: prediction → **{winner}** ({prob_pct:.2f}%)")
+                        st.success(f"ML-model **{selected_model_name}** prediction: **{winner}** ({prob_pct:.2f}%)")
 
 
         # --- Агрегированные показатели команды ---

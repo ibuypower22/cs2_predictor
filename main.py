@@ -250,9 +250,14 @@ def get_matches_cached(force_reload=False):
         live_matches, upcoming_matches = get_matches()  # твой парсер
 
         # Если парсинг дал что-то ≠ пусто — обновляем БД
+        # --- Если запись есть — обновляем, иначе вставляем ---
         cur.execute("""
-            INSERT INTO matches_cache (live, upcoming, last_update)
-            VALUES (%s, %s, %s)
+            INSERT INTO matches_cache (id, live, upcoming, last_update)
+            VALUES (1, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE
+            SET live = EXCLUDED.live,
+                upcoming = EXCLUDED.upcoming,
+                last_update = EXCLUDED.last_update
         """, (json.dumps(live_matches), json.dumps(upcoming_matches), now))
         conn.commit()
 

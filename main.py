@@ -40,8 +40,8 @@ models_dict = {k:v for k,v in [
     ("CatBoost", cb_model)
 ] if v is not None}
 
-# --- Автообновление каждые 5 минут ---
-st_autorefresh(interval=300_000, limit=None, key="refresh")
+# # --- Автообновление каждые 5 минут ---
+# st_autorefresh(interval=300_000, limit=None, key="refresh")
 
 # ----------------- DB Params -----------------
 DB_PARAMS = {

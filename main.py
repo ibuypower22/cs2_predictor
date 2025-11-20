@@ -209,10 +209,6 @@ def get_matches():
 
     return live_matches, upcoming_matches
 
-
-# # --- Загружаем матчи с HLTV ---
-# CACHE_FILE = "matches_cache.json"
-# CACHE_EXPIRY_HOURS = 1
 # --- Подключение к БД ---
 conn = psycopg2.connect(**DB_PARAMS)
 cur = conn.cursor()

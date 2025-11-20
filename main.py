@@ -347,14 +347,24 @@ if search_team:
     ]
     st.write(f"Founded matches after filter: {len(filtered_matches)}")
 
-if models_dict:
-    selected_model_name = st.selectbox(
+# --- Выбор модели ---
+if any(st.session_state.get(f"forecast_type_{i}", "Match prediction") == "Map prediction" for i in range(len(filtered_matches))):
+    # Если хоть один матч на карте — оставляем только Default model и делаем disabled
+    selected_model_name = "Default model"
+    st.selectbox(
         "Choose the model",
-        ["Default model"] + list(models_dict.keys())
+        ["Default model"],
+        index=0,
+        disabled=True
     )
 else:
-    selected_model_name = "Default model"
-
+    if models_dict:
+        selected_model_name = st.selectbox(
+            "Choose the model",
+            ["Default model"] + list(models_dict.keys())
+        )
+    else:
+        selected_model_name = "Default model"
 
 def build_model_features(team1, team2):
     if le is None:
@@ -392,6 +402,18 @@ def build_model_features(team1, team2):
 
     return X_new
 
+# --- Сбрасываем выбор карты и типа прогноза при смене вкладки ---
+if "prev_status_filter" not in st.session_state:
+    st.session_state.prev_status_filter = st.session_state.status_filter
+elif st.session_state.prev_status_filter != st.session_state.status_filter:
+    # сброс всех forecast/map ключей
+    keys_to_reset = [k for k in st.session_state.keys() if k.startswith("forecast_type_") or k.startswith("map_")]
+    for k in keys_to_reset:
+        if k.startswith("forecast_type_"):
+            st.session_state[k] = "Match prediction"
+        else:
+            st.session_state[k] = None
+    st.session_state.prev_status_filter = st.session_state.status_filter
 
 # --- Вывод матчей и прогнозов ---
 for i, m in enumerate(filtered_matches):

@@ -54,9 +54,9 @@ DB_PARAMS = {
 
 # ----------------- Получение матчей -----------------
 def get_matches():
-
     scraper = cloudscraper.create_scraper()
-    matches = []
+    live_matches = []
+    upcoming_matches = []
     seen = set()
     today = datetime.now()
     urls = [("https://www.hltv.org/matches", True)] + [
@@ -71,18 +71,20 @@ def get_matches():
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # --- Live матчи ---
+        # --- Live матчи (отдельно) ---
         if include_live:
             for mw in soup.select(".liveMatches .match-wrapper"):
                 tournament_el = mw.select_one(".match-event")
                 tournament = tournament_el["data-event-headline"] if tournament_el and tournament_el.has_attr("data-event-headline") else "Unknown"
                 teams = mw.select(".match-teamname")
-                if len(teams) != 2: continue
+                if len(teams) != 2:
+                    continue
                 team1, team2 = [t.get_text(strip=True) for t in teams]
                 link_el = mw.select_one("a[href*='/matches/']")
                 match_link = "https://www.hltv.org" + link_el['href'] if link_el else None
                 key = f"{team1}_{team2}_{tournament}"
-                if key in seen: continue
+                if key in seen:
+                    continue
                 seen.add(key)
 
                 # --- Дата и время ---
@@ -120,11 +122,11 @@ def get_matches():
                                 upcoming_maps.append(map_name)
 
                             maps.append({"map": map_name, "status": status})
-                except:
+                except Exception:
                     maps = []
                     upcoming_maps = []
 
-                matches.append({
+                live_matches.append({
                     "tournament": tournament,
                     "team1": team1,
                     "team2": team2,
@@ -136,18 +138,20 @@ def get_matches():
                     "match_time": match_time
                 })
 
-        # --- Upcoming матчи ---
+        # --- Upcoming матчи (отдельно) ---
         for ew in soup.select(".matches-event-wrapper"):
             tournament_el = ew.select_one(".event-headline-text")
             tournament = tournament_el.get_text(strip=True) if tournament_el else "Unknown"
             for mw in ew.select(".match-wrapper"):
                 teams = mw.select(".match-teamname")
-                if len(teams) != 2: continue
+                if len(teams) != 2:
+                    continue
                 team1, team2 = [t.get_text(strip=True) for t in teams]
                 link_el = mw.select_one("a[href*='/matches/']")
                 match_link = "https://www.hltv.org" + link_el['href'] if link_el else None
                 key = f"{team1}_{team2}_{tournament}"
-                if key in seen: continue
+                if key in seen:
+                    continue
                 seen.add(key)
 
                 # --- Дата и время ---
@@ -187,11 +191,11 @@ def get_matches():
                                 maps_cleaned.append(m)
                         maps = maps_cleaned
                         upcoming_maps = [m["map"] for m in maps if m["action"] != "removed"]
-                except:
+                except Exception:
                     maps = []
                     upcoming_maps = []
 
-                matches.append({
+                upcoming_matches.append({
                     "tournament": tournament,
                     "team1": team1,
                     "team2": team2,
@@ -203,35 +207,66 @@ def get_matches():
                     "match_time": match_time
                 })
 
-    return matches
+    return live_matches, upcoming_matches
 
-# --- Загружаем матчи с HLTV ---
-CACHE_FILE = "matches_cache.json"
-CACHE_EXPIRY_HOURS = 1
+
+# # --- Загружаем матчи с HLTV ---
+# CACHE_FILE = "matches_cache.json"
+# CACHE_EXPIRY_HOURS = 1
+# --- Подключение к БД ---
+conn = psycopg2.connect(**DB_PARAMS)
+cur = conn.cursor()
 
 def get_matches_cached(force_reload=False):
-    # проверка session_state
-    if "matches" in st.session_state and not force_reload:
-        return st.session_state.matches
+    cur = conn.cursor()
 
-    # проверка кэша на диске
-    if not force_reload and os.path.exists(CACHE_FILE):
-        cache_mtime = datetime.fromtimestamp(os.path.getmtime(CACHE_FILE))
-        if datetime.now() - cache_mtime < timedelta(hours=CACHE_EXPIRY_HOURS):
-            with open(CACHE_FILE, "r", encoding="utf-8") as f:
-                st.session_state.matches = json.load(f)
-                print("Loaded matches from cache")
-                return st.session_state.matches
+    # 1) Читаем из БД
+    cur.execute("""
+        SELECT live, upcoming, last_update 
+        FROM matches_cache 
+        ORDER BY last_update DESC LIMIT 1
+    """)
+    row = cur.fetchone()
 
-    # если кэша нет или force_reload=True
-    matches = get_matches()  # твоя функция получения матчей
-    st.session_state.matches = matches
+    db_live = row[0] if row else None
+    db_upcoming = row[1] if row else None
+    last_update = row[2] if row else None
 
-    # сохраняем в кэш
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(matches, f, ensure_ascii=False, indent=2)
+    now = datetime.now()
+    db_is_fresh = False
 
-    return matches
+    if last_update:
+        age_sec = (now - last_update).total_seconds()
+        # LIVE матчи считаем свежими до 15 минут
+        if age_sec < 15 * 60:
+            db_is_fresh = True
+
+    # --- 2. Если БД свежая и не форс-апдейт — отдаём данные сразу ---
+    if db_live and db_upcoming and db_is_fresh and not force_reload:
+        return db_live + db_upcoming
+
+    # --- 3. Пробуем парсить (локально работает, на деплое нет) ---
+    try:
+        live_matches, upcoming_matches = get_matches()  # твой парсер
+
+        # Если парсинг дал что-то ≠ пусто — обновляем БД
+        cur.execute("""
+            INSERT INTO matches_cache (live, upcoming, last_update)
+            VALUES (%s, %s, %s)
+        """, (json.dumps(live_matches), json.dumps(upcoming_matches), now))
+        conn.commit()
+
+        return [*live_matches, *upcoming_matches]
+
+    except Exception as e:
+        print("[WARN] Parsing failed:", e)
+
+        # --- 4. Если парсинг сломался → возвращаем старые данные из БД ---
+        if db_live or db_upcoming:
+            return (db_live or []) + (db_upcoming or [])
+
+        # --- 5. Если БД пустая и парсинг сломался ---
+        return []  # других вариантов нет
 
 # --- Streamlit интерфейс ---
 st.title("CS2 Matches Predictor")
@@ -356,9 +391,6 @@ def build_model_features(team1, team2):
 
     return X_new
 
-# --- Подключение к БД ---
-conn = psycopg2.connect(**DB_PARAMS)
-cur = conn.cursor()
 
 # --- Вывод матчей и прогнозов ---
 for i, m in enumerate(filtered_matches):

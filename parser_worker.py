@@ -23,7 +23,7 @@ class HLTVParser:
         driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
         return driver
 
-    def get_page(self, url):
+    def get_page(self, url, retries=3):
         if self.driver is None:
             try:
                 self.driver = self._create_driver()
@@ -31,39 +31,44 @@ class HLTVParser:
                 print(f"[CRITICAL] Не удалось создать драйвер: {e}")
                 return None
 
-        try:
-            print(f"[DEBUG] Запрашиваю URL: {url}")
-            self.driver.get(url)
-
-            # --- ОТЛАДКА: Проверяем заголовок страницы ---
-            print(f"[DEBUG] Заголовок страницы: {self.driver.title}")
-
-            print("[DEBUG] Жду прогрузки...")
-            time.sleep(3)
-
-            # --- ОТЛАДКА: Проверяем наличие защиты ---
-            html = self.driver.page_source
-            if "cf-challenge" in html or "Just a moment" in html:
-                print("[WARN] ОБНАРУЖЕНА ЗАЩИТА CLOUDFLARE!")
-            elif len(html) < 2000:
-                print(f"[WARN] HTML подозрительно короткий: {len(html)} символов")
-
-            print(f"[DEBUG] Получен HTML длиной: {len(html)}")
-            return html
-
-        except Exception as e:
-            print(f"[ERROR] Selenium session lost: {e}")
-            # Принудительно очищаем драйвер при ошибке
+        for attempt in range(retries):
             try:
-                self.driver.quit()
-            except:
-                pass
-            self.driver = None
-            return None
+                print(f"[DEBUG] Запрос {attempt + 1}/{retries}: {url}")
+                self.driver.get(url)
+                time.sleep(3 + attempt * 2)  # Увеличиваем паузу с каждой попыткой
+
+                html = self.driver.page_source
+
+                # Проверка на наличие защиты
+                if "cf-challenge" in html or "Just a moment" in html:
+                    print(f"[WARN] Попытка {attempt + 1}: Обнаружена защита Cloudflare!")
+                    # Можно добавить рандомную задержку здесь, чтобы запутать бота
+                    continue
+
+                if len(html) < 2000:
+                    print(f"[WARN] Попытка {attempt + 1}: HTML подозрительно короткий ({len(html)} символов).")
+                    continue
+
+                # Если дошли сюда, значит страница прогрузилась нормально
+                return html
+
+            except Exception as e:
+                print(f"[ERROR] Ошибка при попытке {attempt + 1}: {e}")
+                # Если упал драйвер — сбрасываем его
+                try:
+                    self.driver.quit()
+                except:
+                    pass
+                self.driver = None
+                # Пересоздаем драйвер на следующей итерации
+                if attempt < retries - 1:
+                    self.driver = self._create_driver()
+
+        print(f"[CRITICAL] Не удалось получить страницу после {retries} попыток.")
+        return None
 
 
 parser = HLTVParser()
-
 
 def get_html_with_cloudflare_bypass(url):
     print(f"[INFO] Вызов парсера для: {url}")

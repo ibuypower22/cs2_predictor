@@ -102,57 +102,66 @@ def clean_text(text: str) -> str:
 def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
     now = datetime.now()
     end_date = now.strftime("%Y-%m-%d")
-
     start_date = (now - relativedelta(months=3)).strftime("%Y-%m-%d")
 
     url = f"https://www.hltv.org/stats/players/{p_id_int}/{nickname_clean.lower()}?startDate={start_date}&endDate={end_date}"
     print(f"[INFO] Ссылка для парсинга игрока: {url}")
 
-    time.sleep(2)
+    # Используем обновленный метод get_page с повторами внутри (если он обновлен)
     html = parser.get_page(url)
-    if not html: return None
+    if not html:
+        return None
 
     soup_stats = BeautifulSoup(html, "html.parser")
-    stats_dict = {"rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0}
+
+    # Временный словарь для данных
+    new_stats = {}
 
     try:
-        # Рейтинг
+        # 1. Валидация: Рейтинг - это главный показатель. Если его нет, парсинг не удался.
         rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
-        if rating_el and rating_el.string:
-            stats_dict["rating"] = float(Decimal(rating_el.string.strip()))
+        if not rating_el or not rating_el.string:
+            print(f"[WARN] Не удалось найти рейтинг для {nickname_clean}, отмена записи.")
+            return None
 
-        # Round Swing
+        new_stats["rating"] = float(Decimal(rating_el.string.strip()))
+        if new_stats["rating"] <= 0:
+            return None
+
+        # 2. Парсинг остальных метрик
+        new_stats["round_swing"] = 0.0
         for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
             label_el = box.select_one(".player-summary-stat-box-data-text")
             value_el = box.select_one(".player-summary-stat-box-data")
             if label_el and value_el and "round swing" in label_el.get_text(strip=True).lower():
-                value_text = "".join(c for c in value_el.get_text(strip=True) if c in "0123456789.-")
-                stats_dict["round_swing"] = float(Decimal(value_text)) if value_text else 0.0
+                val_text = "".join(c for c in value_el.get_text(strip=True) if c in "0123456789.-")
+                new_stats["round_swing"] = float(Decimal(val_text)) if val_text else 0.0
                 break
 
-        # DPR, KAST, ADR, KPR, Multi-kill
+        # Инициализируем остальные поля нулями на случай, если на сайте не будет блока с данными
+        new_stats.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
+
         for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
             parent_label = metric_div.find_next_sibling(class_="player-summary-stat-box-data-text")
             if not parent_label: continue
             label = parent_label.get_text(strip=True).lower()
             value_text = "".join(c for c in metric_div.get_text(strip=True) if c in "0123456789.")
             try:
-                value = float(value_text)
+                val = float(value_text)
+                if "dpr" in label:
+                    new_stats["dpr"] = val
+                elif "kast" in label:
+                    new_stats["kast"] = val
+                elif "multi-kill" in label:
+                    new_stats["multi_kill"] = val
+                elif "adr" in label:
+                    new_stats["adr"] = val
+                elif "kpr" in label:
+                    new_stats["kpr"] = val
             except:
                 continue
 
-            if "dpr" in label:
-                stats_dict["dpr"] = value
-            elif "kast" in label:
-                stats_dict["kast"] = value
-            elif "multi-kill" in label:
-                stats_dict["multi_kill"] = value
-            elif "adr" in label:
-                stats_dict["adr"] = value
-            elif "kpr" in label:
-                stats_dict["kpr"] = value
-
-        # Запись в БД с ТЕАM_ID
+        # 3. Запись в БД только после того, как мы убедились, что данные адекватны
         cur.execute("""
             INSERT INTO players_stats 
             (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, team_id, last_update)
@@ -170,15 +179,20 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
                 last_update = NOW();
         """, (
             p_id_int, nickname_clean,
-            stats_dict["rating"], stats_dict["round_swing"],
-            stats_dict["dpr"], stats_dict["kast"],
-            stats_dict["multi_kill"], stats_dict["adr"],
-            stats_dict["kpr"], team_id
+            new_stats["rating"], new_stats["round_swing"],
+            new_stats["dpr"], new_stats["kast"],
+            new_stats["multi_kill"], new_stats["adr"],
+            new_stats["kpr"], team_id
         ))
         conn.commit()
-        return stats_dict
+
+        # Возвращаем словарь с данными для использования в текущем прогнозе
+        new_stats["hltv_id"] = p_id_int
+        new_stats["nickname"] = nickname_clean
+        return new_stats
+
     except Exception as e:
-        print(f"[ERROR] Ошибка записи стат игрока: {e}")
+        print(f"[ERROR] Критическая ошибка при парсинге/записи {nickname_clean}: {e}")
         conn.rollback()
         return None
 
@@ -208,7 +222,11 @@ def team_player_stats(team_name, html, team_id, cur, conn):
                     (p_id_int,))
                 row = cur.fetchone()
 
-                if row and row[7] and (datetime.now() - row[7].replace(tzinfo=None)).total_seconds() < 86400:
+                # Условие: Данные есть + они свежие + рейтинг НЕ НОЛЬ
+                is_valid = (row and row[0] > 0 and row[7] and
+                            (datetime.now() - row[7].replace(tzinfo=None)).total_seconds() < 86400)
+
+                if is_valid:
                     stats = {
                         "hltv_id": p_id_int, "nickname": nick_clean,
                         "rating": float(row[0]), "round_swing": float(row[1]),
@@ -216,9 +234,13 @@ def team_player_stats(team_name, html, team_id, cur, conn):
                         "multi_kill": float(row[4]), "adr": float(row[5]), "kpr": float(row[6])
                     }
                 else:
+                    # Если рейтинг 0 или данных нет — идем в парсинг
                     stats = fetch_and_save_player_stats(p_id_int, nick_clean, team_id, cur, conn)
+
+                    # Если парсинг вернул что-то дельное — используем, если нет — оставляем 0.0
                     if not stats:
-                        stats = {"hltv_id": p_id_int, "nickname": nick_clean, "rating": 0.0, "round_swing": 0.0, "dpr": 0.0,
+                        stats = {"hltv_id": p_id_int, "nickname": nick_clean, "rating": 0.0, "round_swing": 0.0,
+                                 "dpr": 0.0,
                                  "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0}
                     else:
                         stats["hltv_id"] = p_id_int
@@ -243,13 +265,18 @@ def team_player_stats(team_name, html, team_id, cur, conn):
 def team_match_stats(team_name, html, cur, conn):
     team_name = clean_text(team_name)
 
-    # Проверка кэша
-    cur.execute("SELECT hltv_id, name, world_rank, avg_age, maps_wr, lineup_wr, last_update FROM teams WHERE name=%s", (team_name,))
+    # 1. Проверка кэша (если данные свежие, просто возвращаем их)
+    cur.execute("SELECT hltv_id, name, world_rank, avg_age, maps_wr, lineup_wr, last_update FROM teams WHERE name=%s",
+                (team_name,))
     row = cur.fetchone()
     if row and row[6]:
         last_update = row[6].replace(tzinfo=None) if row[6].tzinfo else row[6]
         if (datetime.now() - last_update).total_seconds() < 86400:
-            return {"hltv_id": row[0], "name": row[1], "world_rank": row[2], "avg_age": row[3], "maps_wr": row[4], "lineup_wr": row[5]}
+            return {
+                "hltv_id": row[0], "name": row[1], "world_rank": row[2],
+                "avg_age": row[3], "maps_wr": json.loads(row[4]) if isinstance(row[4], str) else row[4],
+                "lineup_wr": row[5]
+            }
 
     if html is None:
         return None
@@ -263,8 +290,11 @@ def team_match_stats(team_name, html, cur, conn):
         map_name = box.get("data-mapname", "").lower()
         if not map_name: continue
         try:
-            wr_left = float(box.select_one(".map-stats-infobox-stats:not(.team2) .map-stats-infobox-winpercentage a").text.strip().replace("%", ""))
-            wr_right = float(box.select_one(".map-stats-infobox-stats.team2 .map-stats-infobox-winpercentage a").text.strip().replace("%", ""))
+            wr_left = float(box.select_one(
+                ".map-stats-infobox-stats:not(.team2) .map-stats-infobox-winpercentage a").text.strip().replace("%",
+                                                                                                                ""))
+            wr_right = float(box.select_one(
+                ".map-stats-infobox-stats.team2 .map-stats-infobox-winpercentage a").text.strip().replace("%", ""))
             maps_wr_team1[map_name], maps_wr_team2[map_name] = wr_left, wr_right
         except:
             continue
@@ -274,45 +304,53 @@ def team_match_stats(team_name, html, cur, conn):
 
     for idx, team_div in enumerate(lineup_divs):
         el = team_div.select_one(".box-headline a.text-ellipsis")
-        if not el or (normalize(el.text).find(normalize(team_name)) == -1 and normalize(team_name).find(normalize(el.text)) == -1):
+        if not el or (normalize(el.text).find(normalize(team_name)) == -1 and normalize(team_name).find(
+                normalize(el.text)) == -1):
             continue
 
         hltv_id = int(el.get("href", "").split("/team/")[1].split("/")[0])
 
-        # Получение профиля команды
+        # 2. Безопасное получение профиля
         profile_html = parser.get_page(f"https://www.hltv.org/team/{hltv_id}/{normalize(team_name)}")
+        if not profile_html: continue
+
         soup_p = BeautifulSoup(profile_html, "html.parser")
+        world_rank_el = soup_p.select_one(".profile-team-stat b:contains('World ranking') ~ .right a")
+        world_rank = int(world_rank_el.text.lstrip("#")) if world_rank_el else 0
 
-        world_rank = int(soup_p.select_one(".profile-team-stat b:contains('World ranking') ~ .right a").text.lstrip("#")) if soup_p.select_one(".profile-team-stat") else None
-        avg_age = float(soup_p.select_one(".profile-team-stat b:contains('Average player age') ~ .right").text) if soup_p.select_one(".profile-team-stat") else None
+        age_el = soup_p.select_one(".profile-team-stat b:contains('Average player age') ~ .right")
+        avg_age = float(age_el.text) if age_el else 0.0
 
+        # 3. Безопасное получение WR лайнапа
         player_ids = [p.get("data-player-id") for p in team_div.select(".player-compare")[:5]]
         lineup_wr = 0.0
 
         if player_ids:
             lineup_url = f"https://www.hltv.org/stats/lineup?csVersion=CS2&{'&'.join(f'lineup={pid}' for pid in player_ids)}&minLineupMatch=4"
             lineup_html = parser.get_page(lineup_url)
-
-            stats_block = BeautifulSoup(lineup_html, "html.parser").select_one(".col.standard-box.big-padding:contains('Wins / draws / losses') .large-strong")
-            if stats_block:
-                try:
-                    w, _, l = [int(x) for x in stats_block.text.split("/")]
-                    lineup_wr = round(w / (w + l) * 100, 2) if (w + l) > 0 else 0.0
-                except:
-                    lineup_wr = 0.0
+            if lineup_html:
+                stats_block = BeautifulSoup(lineup_html, "html.parser").select_one(
+                    ".col.standard-box.big-padding:contains('Wins / draws / losses') .large-strong")
+                if stats_block:
+                    try:
+                        w, _, l = [int(x) for x in stats_block.text.split("/")]
+                        lineup_wr = round(w / (w + l) * 100, 2) if (w + l) > 0 else 0.0
+                    except:
+                        lineup_wr = 0.0
 
         current_maps_wr = maps_wr_team1 if idx == 0 else maps_wr_team2
 
-        cur.execute("""INSERT INTO teams (hltv_id, name, world_rank, avg_age, maps_wr, lineup_wr, last_update)
-                               VALUES (%s,%s,%s,%s,%s,%s,NOW())
-                               ON CONFLICT (hltv_id) DO UPDATE SET 
-                                   world_rank=EXCLUDED.world_rank, 
-                                   maps_wr=EXCLUDED.maps_wr, 
-                                   lineup_wr=EXCLUDED.lineup_wr, 
-                                   last_update=NOW()""",
-                    (hltv_id, team_name, world_rank, avg_age, json.dumps(current_maps_wr), lineup_wr))
-
-        conn.commit()
+        # 4. Запись в базу только если данные выглядят валидными
+        if hltv_id > 0:
+            cur.execute("""INSERT INTO teams (hltv_id, name, world_rank, avg_age, maps_wr, lineup_wr, last_update)
+                                   VALUES (%s,%s,%s,%s,%s,%s,NOW())
+                                   ON CONFLICT (hltv_id) DO UPDATE SET 
+                                       world_rank=EXCLUDED.world_rank, 
+                                       maps_wr=EXCLUDED.maps_wr, 
+                                       lineup_wr=EXCLUDED.lineup_wr, 
+                                       last_update=NOW()""",
+                        (hltv_id, team_name, world_rank, avg_age, json.dumps(current_maps_wr), lineup_wr))
+            conn.commit()
 
         return {"hltv_id": hltv_id, "name": team_name, "world_rank": world_rank, "avg_age": avg_age,
                 "maps_wr": current_maps_wr, "lineup_wr": lineup_wr}

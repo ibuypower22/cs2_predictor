@@ -18,11 +18,8 @@ def clean_text(text: str) -> str:
 
 
 def parse_date(date_text: str):
-    # Очищаем лишний текст от HLTV
     date_text = date_text.replace("Results for ", "").strip()
 
-    # Удаляем суффиксы чисел (st, nd, rd, th) с помощью регулярного выражения,
-    # чтобы случайно не сломать названия месяцев (например, в 'August' есть 'st')
     date_text = re.sub(r'(?<=\d)(st|nd|rd|th)', '', date_text)
 
     # Массив месяцев
@@ -31,7 +28,6 @@ def parse_date(date_text: str):
         "July", "August", "September", "October", "November", "December"
     ]
 
-    # Приводим к единому стандарту названий месяцев
     for m in months:
         pattern = re.compile(m[:3], re.IGNORECASE)
         if pattern.match(date_text):
@@ -40,7 +36,6 @@ def parse_date(date_text: str):
             break
 
     try:
-        # Теперь строка имеет вид "May 3 2026"
         return datetime.strptime(date_text, "%B %d %Y").date()
     except Exception as e:
         print(f"Failed to parse date: {date_text} -> {e}")
@@ -118,14 +113,12 @@ def parse_matches(blocks, stop_on_last=True):
             tournament_elem = match.select_one(".event-name")
             tournament = clean_text(tournament_elem.text) if tournament_elem else "Unknown"
 
-            # ИСПРАВЛЕНО: Новый селектор для формата матча (bo1/bo3/bo5)
             map_text_elem = match.select_one(".map-text")
             map_text = map_text_elem.text.strip() if map_text_elem else "Unknown"
             match_format = map_text.lower() if map_text.lower() in ["bo1", "bo3", "bo5"] else "bo1"
 
             score_elem = match.select_one(".result-score")
             if score_elem:
-                # На всякий случай очищаем от лишних пробелов перед сплитом
                 scores = score_elem.text.strip().split("-")
                 try:
                     s1_raw = int(scores[0].strip())
@@ -157,7 +150,6 @@ def parse_matches(blocks, stop_on_last=True):
             break
 
     return new_matches, stop_parsing
-
 
 new_matches = []
 

@@ -40,7 +40,6 @@ models_dict = {k:v for k,v in [
     ("CatBoost", cb_model)
 ] if v is not None}
 
-
 # ----------------- DB Params -----------------
 DB_PARAMS = {
         "dbname": "cs2_matches",
@@ -50,19 +49,17 @@ DB_PARAMS = {
         "port": 5432
     }
 
-
 def get_matches():
     from parser_worker import parser
     live_matches = []
     upcoming_matches = []
-    seen_matches = set()  # Множество для предотвращения дублей
+    seen_matches = set()
 
     html = parser.get_page("https://www.hltv.org/matches")
     if not html: return [], []
 
     soup = BeautifulSoup(html, "html.parser")
 
-    # Проходим по всем матчам
     for mw in soup.select(".match-wrapper"):
         teams = mw.select(".match-teamname")
         if len(teams) != 2: continue
@@ -71,8 +68,6 @@ def get_matches():
         team2 = teams[1].text.strip()
         link = mw.select_one("a")['href']
 
-        # Создаем уникальный ключ для матча
-        # Используем ссылку, так как она уникальна для каждого события
         match_key = link
 
         if match_key in seen_matches:
@@ -327,8 +322,6 @@ elif st.session_state.prev_status_filter != st.session_state.status_filter:
 
 
 for i, m in enumerate(filtered_matches):
-
-    # Если ключа нет, он вернет "Unknown" и скрипт не вылетит
     link_text = (f"[{m.get('status', 'N/A').capitalize()}] "
                  f"{m.get('tournament', 'Unknown')}: "
                  f"{m.get('team1', 'TBD')} vs {m.get('team2', 'TBD')}")
@@ -348,23 +341,18 @@ for i, m in enumerate(filtered_matches):
     if map_key not in st.session_state:
         st.session_state[map_key] = None
 
-
     forecast_type = st.radio(
         "Choose prediction type",
         ["Match prediction", "Map prediction"],
         key=forecast_key
     )
-    # Ключ для хранения статуса карт в сессии
-    # 1. Перед селектбоксом
-    # 1. Логика получения данных
-    # Используем уникальный хэш ссылки, чтобы данные никогда не пересекались
+
     match_id_hash = hashlib.md5(match_link.encode()).hexdigest()
     maps_key = f"maps_data_{match_id_hash}"
 
     is_live = m.get("status") == "live"
 
     if forecast_type == "Map prediction":
-        # Парсим только если это лайв (всегда) или если в сессии пусто
         if is_live or maps_key not in st.session_state:
             match_data = fetch_maps(match_link)
             if match_data and match_data.get("maps"):
@@ -373,14 +361,13 @@ for i, m in enumerate(filtered_matches):
             else:
                 st.session_state[maps_key] = None
 
-    # Отрисовка
     if forecast_type == "Map prediction":
         data = st.session_state.get(maps_key)
         if data:
             selected_map = st.selectbox(
                 f"Choose map: {m['team1']} vs {m['team2']}",
                 data,
-                key=f"select_{match_id_hash}"  # Уникальный ключ для селектбокса
+                key=f"select_{match_id_hash}"
             )
         else:
             st.info("Maps not yet determined.")
@@ -394,17 +381,14 @@ for i, m in enumerate(filtered_matches):
             st.error("Не удалось загрузить данные матча (403/Error).")
             continue
 
-        # 2. Передаем html в функции (поправь функции в model.py, чтобы они принимали html)
         team1_info = team_match_stats(m['team1'], html, cur, conn)
         team2_info = team_match_stats(m['team2'], html, cur, conn)
 
-        # Передаем team1_info["hltv_id"] напрямую!
         players_stats_team1 = team_player_stats(m['team1'], html, team1_info["hltv_id"] if team1_info else None, cur,
                                                 conn)
         players_stats_team2 = team_player_stats(m['team2'], html, team2_info["hltv_id"] if team2_info else None, cur,
                                                 conn)
 
-        # 3. Защита от пустой базы (оставляем твой код)
         if not players_stats_team1:
             players_stats_team1 = [
                 {"hltv_id": 0, "nickname": "No Data", "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
@@ -414,7 +398,6 @@ for i, m in enumerate(filtered_matches):
                 {"hltv_id": 0, "nickname": "No Data", "rating": 0.0, "round_swing": 0.0, "dpr": 0.0, "kast": 0.0,
                  "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0}]
 
-        # 4. Дальше твой код с regex и predict...
         match_id = None
         mobj = re.search(r"/matches/(\d+)", m.get('match_link', ""))
         if mobj:
@@ -475,8 +458,6 @@ for i, m in enumerate(filtered_matches):
                         prob_pct = probs[pred] * 100
                         st.success(f"ML-model **{selected_model_name}** prediction: **{winner}** ({prob_pct:.2f}%)")
 
-
-
         def aggregate_stats(stats_list):
             keys = ["rating", "round_swing", "dpr", "kast", "multi_kill", "adr", "kpr"]
             if not stats_list:
@@ -492,7 +473,6 @@ for i, m in enumerate(filtered_matches):
 
         agg1 = aggregate_stats(players_stats_team1)
         agg2 = aggregate_stats(players_stats_team2)
-
 
         team1_rank = team1_info['world_rank'] if team1_info else "?"
         team2_rank = team2_info['world_rank'] if team2_info else "?"

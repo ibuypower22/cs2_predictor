@@ -31,7 +31,6 @@ def head_to_head(team1, team2, cur):
 
 
 def team_form(team_name, cur, last_n=5):
-
     cur.execute("""
         SELECT score1, score2, team1, team2
         FROM matches
@@ -102,11 +101,9 @@ def clean_text(text: str) -> str:
 
 
 def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
-    """Парсит страницу /stats/players/, сохраняет в БД (включая team_id) и возвращает статы."""
     now = datetime.now()
     end_date = now.strftime("%Y-%m-%d")
 
-    # Вычитает ровно 3 месяца, сохраняя число (28 мая станет 28 февраля)
     start_date = (now - relativedelta(months=3)).strftime("%Y-%m-%d")
 
     url = f"https://www.hltv.org/stats/players/{p_id_int}/{nickname_clean.lower()}?startDate={start_date}&endDate={end_date}"
@@ -188,7 +185,6 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
 
 
 def team_player_stats(team_name, html, team_id, cur, conn):
-    """Основная функция для игроков"""
     players_stats = []
     soup = BeautifulSoup(html, "html.parser")
 
@@ -220,7 +216,6 @@ def team_player_stats(team_name, html, team_id, cur, conn):
                     "multi_kill": float(row[4]), "adr": float(row[5]), "kpr": float(row[6])
                 }
             else:
-                # Передаем полученный team_id внутрь парсера
                 stats = fetch_and_save_player_stats(p_id_int, nick_clean, team_id, cur, conn)
                 if not stats:
                     stats = {"hltv_id": p_id_int, "nickname": nick_clean, "rating": 0.0, "round_swing": 0.0, "dpr": 0.0,
@@ -234,7 +229,7 @@ def team_player_stats(team_name, html, team_id, cur, conn):
     return players_stats
 
 
-def team_match_stats(team_name, html, cur, conn):  # <-- Здесь добавили conn
+def team_match_stats(team_name, html, cur, conn):
     team_name = clean_text(team_name)
 
     # Проверка кэша
@@ -277,7 +272,6 @@ def team_match_stats(team_name, html, cur, conn):  # <-- Здесь добави
         world_rank = int(soup_p.select_one(".profile-team-stat b:contains('World ranking') ~ .right a").text.lstrip("#")) if soup_p.select_one(".profile-team-stat") else None
         avg_age = float(soup_p.select_one(".profile-team-stat b:contains('Average player age') ~ .right").text) if soup_p.select_one(".profile-team-stat") else None
 
-        # Статистика состава
         player_ids = [p.get("data-player-id") for p in team_div.select(".player-compare")[:5]]
         lineup_wr = 0.0
 
@@ -293,10 +287,8 @@ def team_match_stats(team_name, html, cur, conn):  # <-- Здесь добави
                 except:
                     lineup_wr = 0.0
 
-        # Выбираем винрейт карт для текущей команды
         current_maps_wr = maps_wr_team1 if idx == 0 else maps_wr_team2
 
-        # Сохранение
         cur.execute("""INSERT INTO teams (hltv_id, name, world_rank, avg_age, maps_wr, lineup_wr, last_update)
                                VALUES (%s,%s,%s,%s,%s,%s,NOW())
                                ON CONFLICT (hltv_id) DO UPDATE SET 
@@ -306,8 +298,7 @@ def team_match_stats(team_name, html, cur, conn):  # <-- Здесь добави
                                    last_update=NOW()""",
                     (hltv_id, team_name, world_rank, avg_age, json.dumps(current_maps_wr), lineup_wr))
 
-        # 2. ИСПОЛЬЗУЕМ КРАСИВЫЙ ЯВНЫЙ COMMIT
-        conn.commit()  # <-- Заменили cur.connection.commit() на conn.commit()
+        conn.commit()
 
         return {"hltv_id": hltv_id, "name": team_name, "world_rank": world_rank, "avg_age": avg_age,
                 "maps_wr": current_maps_wr, "lineup_wr": lineup_wr}
@@ -316,7 +307,6 @@ def team_match_stats(team_name, html, cur, conn):  # <-- Здесь добави
 
 
 def fetch_maps(match_link):
-    # Используем твой scraper (или parser_worker)
     from parser_worker import parser
     html = parser.get_page(match_link)
     if not html: return None
@@ -339,7 +329,7 @@ def fetch_maps(match_link):
             line_lower = line.lower()
             for map_name in map_list:
                 if map_name in line_lower:
-                    # Твоя логика определения действия
+
                     action = "picked" if "picked" in line_lower else (
                         "removed" if "removed" in line_lower else "left over")
                     team = line.split(" ")[0] if action != "left over" else None

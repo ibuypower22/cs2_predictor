@@ -41,7 +41,6 @@ def parse_date(date_text: str):
         print(f"Failed to parse date: {date_text} -> {e}")
         return None
 
-
 DB_PARAMS = {
         "dbname": "cs2_matches",
         "user": "postgres",

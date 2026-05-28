@@ -5,9 +5,8 @@ from parser_worker import parser
 import math
 import re
 import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from decimal import Decimal
-import cloudscraper
 import unicodedata
 from bs4 import BeautifulSoup
 from unidecode import unidecode

@@ -8,9 +8,8 @@ import statistics
 import numpy as np
 import pandas as pd
 import streamlit as st
-import cloudscraper
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta
+from datetime import datetime
 import psycopg2
 
 from model import (

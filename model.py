@@ -185,45 +185,57 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
 
 def team_player_stats(team_name, html, team_id, cur, conn):
     players_stats = []
-    soup = BeautifulSoup(html, "html.parser")
+    if html:
+        soup = BeautifulSoup(html, "html.parser")
 
-    for team_div in soup.select(".lineup"):
-        team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
-        if not team_name_el or team_name_el.get_text(strip=True) != team_name:
-            continue
+        for team_div in soup.select(".lineup"):
+            team_name_el = team_div.select_one(".box-headline a.text-ellipsis")
+            if not team_name_el or team_name_el.get_text(strip=True) != team_name:
+                continue
 
-        for player_div in team_div.select(".player-compare")[:5]:
-            p_id = player_div.get("data-player-id")
-            if not p_id: continue
-            p_id_int = int(p_id)
+            for player_div in team_div.select(".player-compare")[:5]:
+                p_id = player_div.get("data-player-id")
+                if not p_id: continue
+                p_id_int = int(p_id)
 
-            img = player_div.select_one("img.player-photo")
-            nick = img["alt"].split("'")[1].strip() if img and "'" in img["alt"] else (
-                img["alt"].strip() if img else f"P_{p_id}")
-            nick_clean = clean_text(nick)
+                img = player_div.select_one("img.player-photo")
+                nick = img["alt"].split("'")[1].strip() if img and "'" in img["alt"] else (
+                    img["alt"].strip() if img else f"P_{p_id}")
+                nick_clean = clean_text(nick)
 
-            cur.execute(
-                "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update FROM players_stats WHERE hltv_id=%s",
-                (p_id_int,))
-            row = cur.fetchone()
+                cur.execute(
+                    "SELECT rating, round_swing, dpr, kast, multi_kill, adr, kpr, last_update FROM players_stats WHERE hltv_id=%s",
+                    (p_id_int,))
+                row = cur.fetchone()
 
-            if row and row[7] and (datetime.now() - row[7].replace(tzinfo=None)).total_seconds() < 86400:
-                stats = {
-                    "hltv_id": p_id_int, "nickname": nick_clean,
-                    "rating": float(row[0]), "round_swing": float(row[1]),
-                    "dpr": float(row[2]), "kast": float(row[3]),
-                    "multi_kill": float(row[4]), "adr": float(row[5]), "kpr": float(row[6])
-                }
-            else:
-                stats = fetch_and_save_player_stats(p_id_int, nick_clean, team_id, cur, conn)
-                if not stats:
-                    stats = {"hltv_id": p_id_int, "nickname": nick_clean, "rating": 0.0, "round_swing": 0.0, "dpr": 0.0,
-                             "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0}
+                if row and row[7] and (datetime.now() - row[7].replace(tzinfo=None)).total_seconds() < 86400:
+                    stats = {
+                        "hltv_id": p_id_int, "nickname": nick_clean,
+                        "rating": float(row[0]), "round_swing": float(row[1]),
+                        "dpr": float(row[2]), "kast": float(row[3]),
+                        "multi_kill": float(row[4]), "adr": float(row[5]), "kpr": float(row[6])
+                    }
                 else:
-                    stats["hltv_id"] = p_id_int
-                    stats["nickname"] = nick_clean
+                    stats = fetch_and_save_player_stats(p_id_int, nick_clean, team_id, cur, conn)
+                    if not stats:
+                        stats = {"hltv_id": p_id_int, "nickname": nick_clean, "rating": 0.0, "round_swing": 0.0, "dpr": 0.0,
+                                 "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0}
+                    else:
+                        stats["hltv_id"] = p_id_int
+                        stats["nickname"] = nick_clean
 
-            players_stats.append(stats)
+                players_stats.append(stats)
+    else:
+        cur.execute(
+            "SELECT hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr FROM players_stats WHERE team_id=%s LIMIT 5",
+            (team_id,))
+        rows = cur.fetchall()
+        for row in rows:
+            players_stats.append({
+                "hltv_id": row[0], "nickname": row[1], "rating": float(row[2]),
+                "round_swing": float(row[3]), "dpr": float(row[4]), "kast": float(row[5]),
+                "multi_kill": float(row[6]), "adr": float(row[7]), "kpr": float(row[8])
+            })
 
     return players_stats
 
@@ -238,6 +250,9 @@ def team_match_stats(team_name, html, cur, conn):
         last_update = row[6].replace(tzinfo=None) if row[6].tzinfo else row[6]
         if (datetime.now() - last_update).total_seconds() < 86400:
             return {"hltv_id": row[0], "name": row[1], "world_rank": row[2], "avg_age": row[3], "maps_wr": row[4], "lineup_wr": row[5]}
+
+    if html is None:
+        return None
 
     soup = BeautifulSoup(html, "html.parser")
     lineup_divs = soup.select(".lineup")
@@ -314,27 +329,35 @@ def fetch_maps(match_link):
     map_list = ["dust2", "inferno", "nuke", "mirage", "ancient", "train", "overpass", "vertigo"]
 
     veto_maps = []
-
-    # Твой селектор, который ты использовал раньше
     veto_elements = soup.select(".veto-box .padding")
 
-    if not veto_elements:
-        # Если блок не найден — это штатная ситуация для будущего матча
-        print(f"[DEBUG] Не нашел veto-box на странице: {match_link}")
-        return {"maps": [], "status": "not_determined"}
+    # Ищем все сыгранные карты в блоке результатов (если матч Live)
+    # Обычно сыгранные карты имеют класс или индикатор результата
+    played_maps = set()
+    for mholder in soup.select(".mapholder"):
+        map_name_el = mholder.select_one(".mapname")
+        if map_name_el:
+            # Если у карты есть счет, значит она сыграна
+            results = mholder.select(".results-left .results-team-score, .results-right .results-team-score")
+            if results and not all(r.get_text(strip=True) == "-" for r in results):
+                played_maps.add(map_name_el.get_text(strip=True).lower())
 
     for vd in veto_elements:
         for line in vd.stripped_strings:
             line_lower = line.lower()
             for map_name in map_list:
                 if map_name in line_lower:
-
                     action = "picked" if "picked" in line_lower else (
                         "removed" if "removed" in line_lower else "left over")
-                    team = line.split(" ")[0] if action != "left over" else None
 
-                    if action != "removed":
-                        veto_maps.append({"map": map_name.capitalize(), "action": action, "team": team})
+                    # КЛЮЧЕВОЕ ИЗМЕНЕНИЕ:
+                    # Не добавляем, если карта удалена ИЛИ уже сыграна
+                    if action != "removed" and map_name not in played_maps:
+                        veto_maps.append({
+                            "map": map_name.capitalize(),
+                            "action": action,
+                            "team": line.split(" ")[0] if action != "left over" else None
+                        })
 
     return {"maps": veto_maps, "status": "parsed"}
 

@@ -183,15 +183,15 @@ st.markdown(
 
 # manual_matches = [
 #     {
-#         "team1": "Spirit",
-#         "team2": "Vitality",
+#         "team1": "9z",
+#         "team2": "Enjoy",
 #         "tournament": "Custom Tournament",
 #         "match_link": None,
 #         "upcoming_maps": []
 #     },
 #     {
-#         "team1": "FURIA",
-#         "team2": "MOUZ",
+#         "team1": "HEROIC",
+#         "team2": "brazylijski luz",
 #         "tournament": "Custom Tournament",
 #         "match_link": None,
 #         "upcoming_maps": []
@@ -199,11 +199,26 @@ st.markdown(
 # ]
 #
 # for m in manual_matches:
-#     players_stats_team1 = team_player_stats(m['team1'], None, cur)
-#     players_stats_team2 = team_player_stats(m['team2'], None, cur)
-#     team1_info = team_match_stats(m['team1'], None, cur)
-#     team2_info = team_match_stats(m['team2'], None, cur)
+#     # Передаем None вместо html, так как для кастомных матчей его нет
+#     # Убедись, что твои функции внутри принимают (team, html, cur, conn)
+#     team1_info = team_match_stats(m['team1'], None, cur, conn)
+#     team2_info = team_match_stats(m['team2'], None, cur, conn)
 #
+#     # Используем hltv_id из полученной инфо, если она есть
+#     players_stats_team1 = team_player_stats(
+#         m['team1'],
+#         None,
+#         team1_info.get("hltv_id") if team1_info else None,
+#         cur, conn
+#     )
+#     players_stats_team2 = team_player_stats(
+#         m['team2'],
+#         None,
+#         team2_info.get("hltv_id") if team2_info else None,
+#         cur, conn
+#     )
+#
+#     # Вызов твоего predict_match (оставь как есть, если аргументы совпадают)
 #     prob1, prob2, stats_info = predict_match(
 #         team1=m['team1'],
 #         team2=m['team2'],

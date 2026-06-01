@@ -104,21 +104,49 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
     end_date = now.strftime("%Y-%m-%d")
     start_date = (now - relativedelta(months=3)).strftime("%Y-%m-%d")
 
-    url = f"https://www.hltv.org/stats/players/{p_id_int}/{nickname_clean.lower()}?startDate={start_date}&endDate={end_date}"
-    print(f"[INFO] Ссылка для парсинга игрока: {url}")
+    # 1. Первый запрос — строго с фильтром Top50
+    url = f"https://www.hltv.org/stats/players/{p_id_int}/{nickname_clean.lower()}?startDate={start_date}&endDate={end_date}&rankingFilter=Top50"
+    print(f"[INFO] Ссылка для парсинга игрока (Top50): {url}")
 
-    # Используем обновленный метод get_page с повторами внутри (если он обновлен)
     html = parser.get_page(url)
     if not html:
         return None
 
     soup_stats = BeautifulSoup(html, "html.parser")
 
+    # Парсим количество сыгранных карт против ТОП-50
+    maps_played = 0
+    is_penalty_applied = False
+
+    try:
+        map_count_el = soup_stats.select_one(".player-summary-stat-box-right-map-count")
+        if map_count_el:
+            map_text = map_count_el.get_text(strip=True)
+            digits = re.findall(r'\d+', map_text)
+            if digits:
+                maps_played = int(digits[0])
+    except Exception as e:
+        print(f"[WARN] Не удалось распарсить количество карт для {nickname_clean}: {e}")
+
+    print(f"[INFO] Игрок {nickname_clean} имеет {maps_played} карт против Top50")
+
+    # 2. ФОЛЛБЕК: Если карт меньше 3, переключаемся на дефолтный URL
+    if maps_played <= 3:
+        print(f"[WARN] Карт меньше 3 ({maps_played}/3). Перекачиваем дефолтную стату под штраф.")
+        url = f"https://www.hltv.org/stats/players/{p_id_int}/{nickname_clean.lower()}?startDate={start_date}&endDate={end_date}"
+        print(f"[INFO] Дефолтная ссылка фоллбека: {url}")
+
+        html = parser.get_page(url)
+        if not html:
+            return None
+        soup_stats = BeautifulSoup(html, "html.parser")
+        is_penalty_applied = True
+
     # Временный словарь для данных
     new_stats = {}
 
     try:
-        # 1. Валидация: Рейтинг - это главный показатель. Если его нет, парсинг не удался.
+        # Валидация: Рейтинг
         rating_el = soup_stats.select_one(".player-summary-stat-box-rating-data-text")
         if not rating_el or not rating_el.string:
             print(f"[WARN] Не удалось найти рейтинг для {nickname_clean}, отмена записи.")
@@ -128,7 +156,7 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
         if new_stats["rating"] <= 0:
             return None
 
-        # 2. Парсинг остальных метрик
+        # Парсинг остальных метрик
         new_stats["round_swing"] = 0.0
         for box in soup_stats.select(".player-summary-stat-box-right-bottom .player-summary-stat-box-data-wrapper"):
             label_el = box.select_one(".player-summary-stat-box-data-text")
@@ -138,7 +166,7 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
                 new_stats["round_swing"] = float(Decimal(val_text)) if val_text else 0.0
                 break
 
-        # Инициализируем остальные поля нулями на случай, если на сайте не будет блока с данными
+        # Инициализируем остальные поля нулями
         new_stats.update({"dpr": 0.0, "kast": 0.0, "multi_kill": 0.0, "adr": 0.0, "kpr": 0.0})
 
         for metric_div in soup_stats.select(".player-summary-stat-box-data.traditionalData"):
@@ -161,7 +189,33 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
             except:
                 continue
 
-        # 3. Запись в БД только после того, как мы убедились, что данные адекватны
+        # 3. ФИКСИРОВАННЫЙ СТУПЕНЧАТЫЙ ШТРАФ
+        if is_penalty_applied:
+            if maps_played == 0:
+                # МАКСИМАЛЬНЫЙ ШТРАФ
+                penalty = {"rating": 0.1, "adr": 10.0, "kpr": 0.10, "kast": 5.0, "multi": 2.5, "dpr": -0.05,
+                           "swing": 0.25}
+            elif maps_played in [1, 2]:
+                # СРЕДНИЙ ШТРАФ
+                penalty = {"rating": 0.07, "adr": 7.0, "kpr": 0.07, "kast": 2.5, "multi": 1.25, "dpr": -0.03,
+                           "swing": 0.1}
+            else:  # maps_played == 3
+                # МИНИМАЛЬНЫЙ ШТРАФ (для 3-х карт)
+                penalty = {"rating": 0.04, "adr": 4.0, "kpr": 0.04, "kast": 1.0, "multi": 0.5, "dpr": -0.01,
+                           "swing": 0.05}
+
+            # Применяем словарь штрафов
+            new_stats["rating"] = round(new_stats["rating"] - penalty["rating"], 2)
+            new_stats["adr"] = round(new_stats["adr"] - penalty["adr"], 1)
+            new_stats["kpr"] = round(new_stats["kpr"] - penalty["kpr"], 2)
+            new_stats["kast"] = round(new_stats["kast"] - penalty["kast"], 1)
+            new_stats["multi_kill"] = round(new_stats["multi_kill"] - penalty["multi"], 2)
+            new_stats["dpr"] = round(new_stats["dpr"] - penalty["dpr"], 2)  # Вычитаем минус, чтобы увеличить DPR
+            new_stats["round_swing"] = round(new_stats["round_swing"] - penalty["swing"], 2)
+
+            print(f"[INFO] Применен штраф уровня {maps_played} карт для {nickname_clean}")
+
+        # 4. Запись в БД
         cur.execute("""
             INSERT INTO players_stats 
             (hltv_id, nickname, rating, round_swing, dpr, kast, multi_kill, adr, kpr, team_id, last_update)
@@ -186,7 +240,6 @@ def fetch_and_save_player_stats(p_id_int, nickname_clean, team_id, cur, conn):
         ))
         conn.commit()
 
-        # Возвращаем словарь с данными для использования в текущем прогнозе
         new_stats["hltv_id"] = p_id_int
         new_stats["nickname"] = nickname_clean
         return new_stats
@@ -324,19 +377,54 @@ def team_match_stats(team_name, html, cur, conn):
         # 3. Безопасное получение WR лайнапа
         player_ids = [p.get("data-player-id") for p in team_div.select(".player-compare")[:5]]
         lineup_wr = 0.0
-
+        now = datetime.now()
+        end_date = now.strftime("%Y-%m-%d")
+        start_date = (now - relativedelta(months=3)).strftime("%Y-%m-%d")
         if player_ids:
-            lineup_url = f"https://www.hltv.org/stats/lineup?csVersion=CS2&{'&'.join(f'lineup={pid}' for pid in player_ids)}&minLineupMatch=4"
+            # 1. Формируем первичную ссылку с Top50
+            lineup_url = f"https://www.hltv.org/stats/lineup?csVersion=CS2&{'&'.join(f'lineup={pid}' for pid in player_ids)}&minLineupMatch=4&startDate={start_date}&endDate={end_date}&rankingFilter=Top50"
             lineup_html = parser.get_page(lineup_url)
+            is_penalty_applied = False
+
+            lineup_wr = 0.0
+
             if lineup_html:
-                stats_block = BeautifulSoup(lineup_html, "html.parser").select_one(
+                soup = BeautifulSoup(lineup_html, "html.parser")
+                stats_block = soup.select_one(
                     ".col.standard-box.big-padding:contains('Wins / draws / losses') .large-strong")
-                if stats_block:
+
+                # Проверяем, есть ли матчи против Top50
+                # Если блок есть, но там "0 / 0 / 0" -> считаем, что матчей нет
+                if stats_block and stats_block.text.strip() != "0 / 0 / 0":
                     try:
                         w, _, l = [int(x) for x in stats_block.text.split("/")]
                         lineup_wr = round(w / (w + l) * 100, 2) if (w + l) > 0 else 0.0
                     except:
                         lineup_wr = 0.0
+                else:
+                    # ФОЛЛБЕК: Если нет матчей против Top50, идем за общей статой
+                    print(f"[INFO] Нет матчей против Top50 для лайнапа {team_name}, запрашиваем общую стату...")
+                    lineup_url_all = f"https://www.hltv.org/stats/lineup?csVersion=CS2&{'&'.join(f'lineup={pid}' for pid in player_ids)}&minLineupMatch=4&startDate={start_date}&endDate={end_date}"
+                    lineup_html_all = parser.get_page(lineup_url_all)
+
+                    if lineup_html_all:
+                        soup_all = BeautifulSoup(lineup_html_all, "html.parser")
+                        stats_block_all = soup_all.select_one(
+                            ".col.standard-box.big-padding:contains('Wins / draws / losses') .large-strong")
+                        if stats_block_all and stats_block_all.text.strip() != "0 / 0 / 0":
+                            try:
+                                w, _, l = [int(x) for x in stats_block_all.text.split("/")]
+                                lineup_wr = round(w / (w + l) * 100, 2) if (w + l) > 0 else 0.0
+                                is_penalty_applied = True  # Ставим флаг для штрафа
+                            except:
+                                lineup_wr = 0.0
+
+            # 2. Применяем штраф 5%, если стата была набита "на бомжах"
+            if is_penalty_applied and lineup_wr > 0:
+                print(f"[WARN] Применяем штраф 5% к винрейту {team_name}, так как стата без Top50")
+                lineup_wr = max(0.0, lineup_wr - 10.0)
+
+            # 3. Дальше твой код записи в БД (без изменений)
 
         current_maps_wr = maps_wr_team1 if idx == 0 else maps_wr_team2
 
@@ -468,18 +556,16 @@ def predict_map(team1, team2, map_name,
         base1 = 120 / math.log(rank1 + 1)
         base2 = 120 / math.log(rank2 + 1)
 
-
         bonus1, bonus2 = base1, base2
-        if gap > 0:
 
+        if gap > 0:
             factor = 1 + (gap / 10) ** 1.5
-            if gap > 0:
-                bonus1 *= factor
-                bonus2 /= factor
-            else:
-                factor = 1 + (abs(gap) / 10) ** 1.5
-                bonus2 *= factor
-                bonus1 /= factor
+            bonus1 *= factor
+            bonus2 /= factor
+        elif gap < 0:  # ВЫПОРТНУЛИ ИЗ ВНУТРЕННЕГО IF
+            factor = 1 + (abs(gap) / 10) ** 1.5
+            bonus2 *= factor
+            bonus1 /= factor
 
         return bonus1, bonus2
 
@@ -549,10 +635,16 @@ def predict_match(team1, team2, match_id, cur, conn=None,
 
     def compute_h2h(team1, team2):
         data = head_to_head_scores(team1, team2, cur)
+        if not data or not data[0]:
+            return 0
+
         import re
-        m = re.search(r"(\d+).+?(\d+)", data[0])
-        if m:
-            return int(m.group(1)) - int(m.group(2))
+        # Ищем число, после которого через пробелы идет слово "win" или "wins"
+        matches = re.findall(r"(\d+)\s+wins?", data[0], re.IGNORECASE)
+
+        if len(matches) >= 2:
+            return int(matches[0]) - int(matches[1])
+
         return 0
 
     form_diff = compute_form(team1) - compute_form(team2)

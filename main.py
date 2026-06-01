@@ -181,57 +181,100 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# manual_matches = [
-#     {
-#         "team1": "9z",
-#         "team2": "Enjoy",
-#         "tournament": "Custom Tournament",
-#         "match_link": None,
-#         "upcoming_maps": []
-#     },
-#     {
-#         "team1": "HEROIC",
-#         "team2": "brazylijski luz",
-#         "tournament": "Custom Tournament",
-#         "match_link": None,
-#         "upcoming_maps": []
-#     }
-# ]
-#
-# for m in manual_matches:
-#     # Передаем None вместо html, так как для кастомных матчей его нет
-#     # Убедись, что твои функции внутри принимают (team, html, cur, conn)
-#     team1_info = team_match_stats(m['team1'], None, cur, conn)
-#     team2_info = team_match_stats(m['team2'], None, cur, conn)
-#
-#     # Используем hltv_id из полученной инфо, если она есть
-#     players_stats_team1 = team_player_stats(
-#         m['team1'],
-#         None,
-#         team1_info.get("hltv_id") if team1_info else None,
-#         cur, conn
-#     )
-#     players_stats_team2 = team_player_stats(
-#         m['team2'],
-#         None,
-#         team2_info.get("hltv_id") if team2_info else None,
-#         cur, conn
-#     )
-#
-#     # Вызов твоего predict_match (оставь как есть, если аргументы совпадают)
-#     prob1, prob2, stats_info = predict_match(
-#         team1=m['team1'],
-#         team2=m['team2'],
-#         match_id=None,
-#         cur=cur,
-#         conn=conn,
-#         players_stats_team1=players_stats_team1,
-#         players_stats_team2=players_stats_team2,
-#         team1_info=team1_info,
-#         team2_info=team2_info,
-#         maps_list=m.get("upcoming_maps")
-#     )
-#     print(f"{m['team1']} {prob1}%, {m['team2']} {prob2}%")
+manual_matches = [
+    {
+        "team1": "SINNERS",
+        "team2": "Lynn Vision",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "Liquid",
+        "team2": "TYLOO",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "SINNERS",
+        "team2": "BIG",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "TYLOO",
+        "team2": "NRG",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "M80",
+        "team2": "Liquid",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "Lynn Vision",
+        "team2": "Liquid",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "HEROIC",
+        "team2": "Lynn Vision",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    },
+    {
+        "team1": "B8",
+        "team2": "Liquid",
+        "tournament": "Custom Tournament",
+        "match_link": None,
+        "upcoming_maps": []
+    }
+
+]
+
+for m in manual_matches:
+    # Передаем None вместо html, так как для кастомных матчей его нет
+    # Убедись, что твои функции внутри принимают (team, html, cur, conn)
+    team1_info = team_match_stats(m['team1'], None, cur, conn)
+    team2_info = team_match_stats(m['team2'], None, cur, conn)
+
+    # Используем hltv_id из полученной инфо, если она есть
+    players_stats_team1 = team_player_stats(
+        m['team1'],
+        None,
+        team1_info.get("hltv_id") if team1_info else None,
+        cur, conn
+    )
+    players_stats_team2 = team_player_stats(
+        m['team2'],
+        None,
+        team2_info.get("hltv_id") if team2_info else None,
+        cur, conn
+    )
+
+    # Вызов твоего predict_match (оставь как есть, если аргументы совпадают)
+    prob1, prob2, stats_info = predict_match(
+        team1=m['team1'],
+        team2=m['team2'],
+        match_id=None,
+        cur=cur,
+        conn=conn,
+        players_stats_team1=players_stats_team1,
+        players_stats_team2=players_stats_team2,
+        team1_info=team1_info,
+        team2_info=team2_info,
+        maps_list=m.get("upcoming_maps")
+    )
+    print(f"{m['team1']} {prob1}%, {m['team2']} {prob2}%")
 
 
 if "status_filter" not in st.session_state:

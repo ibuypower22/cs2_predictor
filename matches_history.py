@@ -7,6 +7,8 @@ from unidecode import unidecode
 import re
 import time
 
+from parser_worker import parser
+
 
 def clean_text(text: str) -> str:
     if not text:
@@ -74,17 +76,20 @@ scraper = cloudscraper.create_scraper()
 
 
 def fetch_matches_from_page(offset):
-
     url = f"https://www.hltv.org/results?offset={offset}"
     print(f"Fetching: {url}")
 
     max_retries = 3
     for attempt in range(max_retries):
-        response = scraper.get(url, timeout=15)
-        soup = BeautifulSoup(response.text, "html.parser")
-        blocks = soup.select(".results-sublist")
-        if blocks:
-            return blocks
+        # ВАЖНО: Используем Selenium-парсер вместо scraper.get()
+        html = parser.get_page(url)
+
+        if html:
+            soup = BeautifulSoup(html, "html.parser")
+            blocks = soup.select(".results-sublist")
+            if blocks:
+                return blocks
+
         print(f"Try {attempt + 1} failed, wait 5 seconds...")
         time.sleep(5)
     return []
